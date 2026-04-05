@@ -1,50 +1,59 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function NewArrivals() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/library/new-arrivals"
-        );
+    try {
+      const res = await API.get("/library/new-arrivals");
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const books =
+        res.data?.data || res.data?.books || res.data || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(Array.isArray(books) ? books : []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load new arrivals");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // =========================
-  // 🔍 FILTER LOGIC
+  // 🔍 FILTER LOGIC (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     return data.filter((book) => {
+      const title = (book?.title || "").toLowerCase();
+      const author = (book?.author || "").toLowerCase();
+
       const matchesSearch =
-        book.title.toLowerCase().includes(search.toLowerCase()) ||
-        book.author.toLowerCase().includes(search.toLowerCase());
+        title.includes(search.toLowerCase()) ||
+        author.includes(search.toLowerCase());
+
+      // 🔥 Normalize date (important)
+      const bookDate = book?.added_date
+        ? new Date(book.added_date).toISOString().split("T")[0]
+        : "";
 
       const matchesDate =
-        dateFilter === "" || book.added_date === dateFilter;
+        !dateFilter || bookDate === dateFilter;
 
       return matchesSearch && matchesDate;
     });
@@ -54,7 +63,7 @@ export default function NewArrivals() {
     <div style={styles.container}>
       <h2>🆕 New Arrivals</h2>
 
-      {/* ================= FILTERS ================= */}
+      {/* FILTERS */}
       <div style={styles.filters}>
         <input
           type="text"
@@ -70,53 +79,66 @@ export default function NewArrivals() {
           onChange={(e) => setDateFilter(e.target.value)}
           style={styles.input}
         />
+
+        <button onClick={fetchData} style={styles.button}>
+          Refresh
+        </button>
       </div>
 
-      {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Author</th>
-            <th>Category</th>
-            <th>Added Date</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+      {/* STATUS */}
+      {loading && <p>⏳ Loading...</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
-        <tbody>
-          {filteredData.length === 0 ? (
+      {/* TABLE */}
+      {!loading && !error && (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No new books found
-              </td>
+              <th>Title</th>
+              <th>Author</th>
+              <th>Category</th>
+              <th>Added Date</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((book) => (
-              <tr key={book.id}>
-                <td>
-                  {book.title}{" "}
-                  <span style={styles.newBadge}>NEW</span>
-                </td>
-                <td>{book.author}</td>
-                <td>{book.category}</td>
-                <td>{book.added_date}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={book.available} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {book.available ? "Available" : "Issued"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No new books found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((book) => (
+                <tr key={book?.id || Math.random()}>
+                  <td>
+                    {book?.title || "—"}
+                    <span style={styles.newBadge}>NEW</span>
+                  </td>
+                  <td>{book?.author || "—"}</td>
+                  <td>{book?.category || "—"}</td>
+                  <td>
+                    {book?.added_date
+                      ? new Date(book.added_date).toLocaleDateString()
+                      : "—"}
+                  </td>
+
+                  <td>
+                    <StatusIcon status={book?.available} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {book?.available ? "Available" : "Issued"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -128,12 +150,22 @@ const styles = {
     display: "flex",
     gap: "10px",
     marginBottom: "15px",
+    flexWrap: "wrap",
   },
 
   input: {
     padding: "8px",
     border: "1px solid #ccc",
     borderRadius: "5px",
+  },
+
+  button: {
+    padding: "8px 12px",
+    background: "#007bff",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {
@@ -153,5 +185,9 @@ const styles = {
     fontSize: "10px",
     borderRadius: "4px",
     marginLeft: "5px",
+  },
+
+  error: {
+    color: "red",
   },
 };

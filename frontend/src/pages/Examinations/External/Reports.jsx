@@ -1,46 +1,46 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
 
 export default function ExternalReports() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [examFilter, setExamFilter] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH REPORTS
+  // 📄 FETCH REPORTS (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/examination/external/reports"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchReports = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/examination/external/reports");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // =========================
-  // 🔍 FILTER LOGIC
+  // 🔁 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
+
+  // =========================
+  // 🔍 FILTER LOGIC (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     return data.filter((item) => {
       const matchesSearch =
-        item.subject.toLowerCase().includes(search.toLowerCase()) ||
-        item.student_name.toLowerCase().includes(search.toLowerCase());
+        (item.subject || "")
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        (item.student_name || "")
+          .toLowerCase()
+          .includes(search.toLowerCase());
 
       const matchesExam =
         examFilter === "" || item.exam_name === examFilter;
@@ -49,6 +49,9 @@ export default function ExternalReports() {
     });
   }, [data, search, examFilter]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>📄 External Exam Reports</h2>
@@ -76,50 +79,53 @@ export default function ExternalReports() {
       </div>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Student</th>
-            <th>Roll No</th>
-            <th>Subject</th>
-            <th>Exam</th>
-            <th>Marks</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading reports...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="6" style={styles.noData}>
-                No reports found
-              </td>
+              <th>Student</th>
+              <th>Roll No</th>
+              <th>Subject</th>
+              <th>Exam</th>
+              <th>Marks</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.student_name}</td>
-                <td>{item.roll_no}</td>
-                <td>{item.subject}</td>
-                <td>{item.exam_name}</td>
-                <td>{item.marks}</td>
+          </thead>
 
-                <td>
-                  {item.marks >= 40 ? (
-                    <span style={{ color: "green" }}>Pass</span>
-                  ) : (
-                    <span style={{ color: "red" }}>Fail</span>
-                  )}
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="6" style={styles.noData}>
+                  No reports found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.student_name || "—"}</td>
+                  <td>{item.roll_no || "—"}</td>
+                  <td>{item.subject || "—"}</td>
+                  <td>{item.exam_name || "—"}</td>
+                  <td>{item.marks ?? "—"}</td>
+
+                  <td>
+                    {item.marks >= 40 ? (
+                      <span style={{ color: "green" }}>Pass</span>
+                    ) : (
+                      <span style={{ color: "red" }}>Fail</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

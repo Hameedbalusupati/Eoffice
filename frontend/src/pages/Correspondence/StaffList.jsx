@@ -1,50 +1,53 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function StaffList() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH STAFF
+  // 📄 FETCH STAFF (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/employee/staff"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchStaff = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/employee/staff");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // =========================
-  // 🔍 SEARCH FILTER
+  // 🔁 USE EFFECT (FIXED)
+  // =========================
+  useEffect(() => {
+    fetchStaff();
+  }, [fetchStaff]);
+
+  // =========================
+  // 🔍 SEARCH FILTER (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     if (!search) return data;
 
     return data.filter((staff) =>
-      staff.name.toLowerCase().includes(search.toLowerCase()) ||
-      staff.department.toLowerCase().includes(search.toLowerCase())
+      (staff.name || "")
+        .toLowerCase()
+        .includes(search.toLowerCase()) ||
+      (staff.department || "")
+        .toLowerCase()
+        .includes(search.toLowerCase())
     );
   }, [data, search]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>👨‍🏫 Staff List</h2>
@@ -59,47 +62,50 @@ export default function StaffList() {
       />
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Department</th>
-            <th>Email</th>
-            <th>Phone</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading staff...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No staff found
-              </td>
+              <th>Name</th>
+              <th>Department</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((staff) => (
-              <tr key={staff.id}>
-                <td>{staff.name}</td>
-                <td>{staff.department}</td>
-                <td>{staff.email}</td>
-                <td>{staff.phone}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={staff.active} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {staff.active ? "Active" : "Inactive"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No staff found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((staff) => (
+                <tr key={staff.id}>
+                  <td>{staff.name || "—"}</td>
+                  <td>{staff.department || "—"}</td>
+                  <td>{staff.email || "—"}</td>
+                  <td>{staff.phone || "—"}</td>
+
+                  <td>
+                    <StatusIcon status={staff.active} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {staff.active ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

@@ -1,21 +1,58 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-import StatusIcon from "../../components/StatusIcon";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
 
-export default function Batches() {
+export default function Circulars() {
   const [form, setForm] = useState({
-    class_name: "",
-    batch_name: "",
-    students: "",
+    title: "",
+    date: "",
+    description: "",
   });
 
   const [data, setData] = useState([]);
-  const [message, setMessage] = useState("");
+  const [filteredData, setFilteredData] = useState([]);
+  const [search, setSearch] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user");
+  }
 
   // =========================
-  // 🔄 HANDLE INPUT
+  // 📄 FETCH CIRCULARS
+  // =========================
+  const fetchData = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await API.get(`/academics/circulars/${user.id}`);
+      const result = res.data || [];
+
+      setData(result);
+      setFilteredData(result);
+    } catch (err) {
+      console.error(err);
+      setError("❌ Failed to load circulars");
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // =========================
+  // 🔄 INPUT CHANGE
   // =========================
   const handleChange = (e) => {
     setForm({
@@ -25,189 +62,197 @@ export default function Batches() {
   };
 
   // =========================
-  // 📄 FETCH BATCHES
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/batches/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
-
-  // =========================
-  // 🚀 CREATE BATCH
+  // 🚀 SUBMIT
   // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!user?.id) {
+      setMessage("❌ Please login");
+      return;
+    }
+
     try {
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
-        activity_name: "batches",
-        subject: form.batch_name,
-        class_name: form.class_name,
-        description: `Students: ${form.students}`,
+      setLoading(true);
+      setMessage("");
+
+      const description = `
+Date: ${form.date}
+Details: ${form.description}
+      `;
+
+      await API.post("/academics/create", {
+        faculty_id: user.id,
+        activity_name: "circulars",
+        subject: form.title,
+        class_name: "N/A",
+        description,
         status: "completed",
       });
 
-      setMessage("✅ Batch created successfully!");
+      setMessage("✅ Circular created successfully!");
 
       setForm({
-        class_name: "",
-        batch_name: "",
-        students: "",
+        title: "",
+        date: "",
+        description: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/batches/${user.id}`
-      );
-      setData(res.data);
-
+      fetchData(); // refresh
     } catch (err) {
       console.error(err);
-      setMessage("❌ Failed to create batch");
+      setMessage("❌ Failed to create circular");
+    } finally {
+      setLoading(false);
     }
   };
 
+  // =========================
+  // 🔍 SEARCH
+  // =========================
+  const handleSearch = (e) => {
+    const value = e.target.value.toLowerCase();
+    setSearch(value);
+
+    const filtered = data.filter(
+      (item) =>
+        (item.subject || "").toLowerCase().includes(value) ||
+        (item.description || "").toLowerCase().includes(value)
+    );
+
+    setFilteredData(filtered);
+  };
+
+  // =========================
+  // UI
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
+
   return (
     <div style={styles.container}>
-      <h2>📦 Batches Management</h2>
+      <h2>📢 Circulars</h2>
 
+      {/* 🔔 MESSAGE */}
       {message && <p style={styles.message}>{message}</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
       {/* ================= FORM ================= */}
       <form onSubmit={handleSubmit} style={styles.form}>
         <input
           type="text"
-          name="class_name"
-          placeholder="Class (e.g. CSE-A)"
-          value={form.class_name}
+          name="title"
+          placeholder="Circular Title"
+          value={form.title}
           onChange={handleChange}
           required
           style={styles.input}
         />
 
         <input
-          type="text"
-          name="batch_name"
-          placeholder="Batch Name (e.g. Batch-1)"
-          value={form.batch_name}
+          type="date"
+          name="date"
+          value={form.date}
           onChange={handleChange}
           required
           style={styles.input}
         />
 
         <textarea
-          name="students"
-          placeholder="Student Roll Numbers (comma separated)"
-          value={form.students}
+          name="description"
+          placeholder="Circular Details"
+          value={form.description}
           onChange={handleChange}
-          required
           style={styles.textarea}
         />
 
-        <button type="submit" style={styles.button}>
-          Create Batch
+        <button type="submit" style={styles.button} disabled={loading}>
+          {loading ? "Submitting..." : "Create Circular"}
         </button>
       </form>
 
-      {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Batch</th>
-            <th>Class</th>
-            <th>Students</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+      {/* ================= SEARCH ================= */}
+      <input
+        type="text"
+        placeholder="Search circulars..."
+        value={search}
+        onChange={handleSearch}
+        style={styles.search}
+      />
 
-        <tbody>
-          {data.length === 0 ? (
+      {/* ================= LIST ================= */}
+      {loading ? (
+        <p>Loading...</p>
+      ) : filteredData.length === 0 ? (
+        <p>No circulars found</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No batches found
-              </td>
+              <th>Title</th>
+              <th>Description</th>
             </tr>
-          ) : (
-            data.map((item) => (
+          </thead>
+
+          <tbody>
+            {filteredData.map((item) => (
               <tr key={item.id}>
                 <td>{item.subject}</td>
-                <td>{item.class_name}</td>
-
-                <td style={styles.desc}>
-                  {item.description}
-                </td>
-
-                <td>
-                  <StatusIcon
-                    status={item.status === "completed"}
-                  />
-                </td>
+                <td>{item.description}</td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
 // =========================
 const styles = {
-  container: { padding: "20px" },
+  container: {
+    padding: "20px",
+  },
 
   form: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "15px",
     maxWidth: "400px",
     marginBottom: "20px",
   },
 
   input: {
     padding: "10px",
-    border: "1px solid #ccc",
     borderRadius: "5px",
+    border: "1px solid #ccc",
   },
 
   textarea: {
     padding: "10px",
-    border: "1px solid #ccc",
     borderRadius: "5px",
+    border: "1px solid #ccc",
     minHeight: "80px",
   },
 
   button: {
     padding: "10px",
-    backgroundColor: "#0ea5e9",
+    backgroundColor: "#16a34a",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
+  },
+
+  search: {
+    padding: "10px",
+    width: "300px",
+    marginBottom: "15px",
+    borderRadius: "5px",
+    border: "1px solid #ccc",
   },
 
   table: {
@@ -215,18 +260,13 @@ const styles = {
     borderCollapse: "collapse",
   },
 
-  desc: {
-    maxWidth: "400px",
-    wordWrap: "break-word",
-  },
-
-  noData: {
-    textAlign: "center",
-    padding: "20px",
-  },
-
   message: {
+    color: "green",
     marginBottom: "10px",
-    fontWeight: "bold",
+  },
+
+  error: {
+    color: "red",
+    marginBottom: "10px",
   },
 };

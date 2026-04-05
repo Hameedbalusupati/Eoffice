@@ -2,14 +2,22 @@
   font-size: 18px;
   font-weight: bold;
   margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* ✅ Completed */
+/* ✅ SUCCESS / COMPLETED */
 .status-icon.completed {
   color: #22c55e; /* green */
 }
 
-/* ❌ Pending */
-.status-icon.pending {
+/* ❌ ERROR / FAILED */
+.status-icon.error {
   color: #ef4444; /* red */
+}
+
+/* ⏳ PENDING */
+.status-icon.pending {
+  color: #f59e0b; /* yellow */
 }

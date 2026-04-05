@@ -1,66 +1,69 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
 
-export default function TimeTableReport() {
+export default function Batches() {
   const [className, setClassName] = useState("");
   const [day, setDay] = useState("");
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user");
+  }
 
   // =========================
-  // 📄 FETCH DATA (SAFE)
+  // 📄 FETCH DATA
   // =========================
-  useEffect(() => {
-    if (!className || !day) return;
+  const fetchData = useCallback(async () => {
+    if (!user?.id || !className || !day) return;
 
-    let ignore = false;
-
-    const fetchData = async () => {
+    try {
       setLoading(true);
+      setError("");
 
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/academics/day-timetable",
-          {
-            params: {
-              faculty_id: user?.id,
-              class_name: className,
-              day: day,
-            },
-          }
-        );
+      const res = await API.get("/academics/day-timetable", {
+        params: {
+          faculty_id: user.id,
+          class_name: className,
+          day: day,
+        },
+      });
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
+      setData(res.data || []);
+    } catch (err) {
+      console.error(err);
+      setError("❌ Failed to load timetable");
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, className, day]);
 
-      if (!ignore) {
-        setLoading(false);
-      }
-    };
-
+  useEffect(() => {
     fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [className, day, user?.id]);
+  }, [fetchData]);
 
   // =========================
-  // 🖨️ PRINT FUNCTION
+  // 🖨️ PRINT
   // =========================
   const handlePrint = () => {
     window.print();
   };
 
+  // =========================
+  // UI
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
+
   return (
     <div style={styles.container}>
-      <h2>📄 Time Table Report</h2>
+      <h2>📄 Batches Time Table Report</h2>
 
       {/* ================= FILTER ================= */}
       <div style={styles.filter}>
@@ -89,19 +92,28 @@ export default function TimeTableReport() {
           <option value="Saturday">Saturday</option>
         </select>
 
-        <button style={styles.button} onClick={handlePrint}>
+        <button
+          onClick={handlePrint}
+          style={styles.button}
+          disabled={!data.length}
+        >
           🖨️ Print
         </button>
       </div>
 
-      {/* ================= REPORT ================= */}
+      {/* ❌ ERROR */}
+      {error && <p style={styles.error}>{error}</p>}
+
+      {/* 📋 TABLE */}
       {loading ? (
         <p>Loading...</p>
       ) : data.length === 0 ? (
         <p>No timetable data</p>
       ) : (
         <div style={styles.reportBox}>
-          <h3>{className} - {day}</h3>
+          <h3>
+            Class: {className} | Day: {day}
+          </h3>
 
           <table style={styles.table}>
             <thead>
@@ -117,11 +129,11 @@ export default function TimeTableReport() {
             <tbody>
               {data.map((item, index) => (
                 <tr key={index}>
-                  <td>{item.period}</td>
-                  <td>{item.time}</td>
-                  <td>{item.subject}</td>
-                  <td>{item.faculty}</td>
-                  <td>{item.room}</td>
+                  <td>{item.period || "-"}</td>
+                  <td>{item.time || "-"}</td>
+                  <td>{item.subject || "-"}</td>
+                  <td>{item.faculty || "-"}</td>
+                  <td>{item.room || "-"}</td>
                 </tr>
               ))}
             </tbody>
@@ -131,7 +143,6 @@ export default function TimeTableReport() {
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -149,24 +160,34 @@ const styles = {
 
   select: {
     padding: "8px",
+    borderRadius: "5px",
+    border: "1px solid #ccc",
   },
 
   button: {
     padding: "8px 15px",
-    backgroundColor: "#dc2626",
+    backgroundColor: "#2563eb",
     color: "#fff",
     border: "none",
+    borderRadius: "5px",
     cursor: "pointer",
   },
 
   reportBox: {
     backgroundColor: "#fff",
     padding: "20px",
-    border: "1px solid #ccc",
+    border: "1px solid #ddd",
+    borderRadius: "6px",
   },
 
   table: {
     width: "100%",
     borderCollapse: "collapse",
+    marginTop: "10px",
+  },
+
+  error: {
+    color: "red",
+    marginBottom: "10px",
   },
 };

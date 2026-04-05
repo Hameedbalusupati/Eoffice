@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import API from "../../../../services/api"; // ✅ FIX
 
 export default function GeneralAttendance() {
   const [form, setForm] = useState({
@@ -11,11 +11,15 @@ export default function GeneralAttendance() {
 
   const [message, setMessage] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER FETCH
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user in localStorage");
+  }
 
-  // =========================
   // 🔄 HANDLE INPUT
-  // =========================
   const handleChange = (e) => {
     setForm({
       ...form,
@@ -23,11 +27,14 @@ export default function GeneralAttendance() {
     });
   };
 
-  // =========================
   // 🚀 SUBMIT FORM
-  // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!user?.id) {
+      setMessage("❌ Please login first");
+      return;
+    }
 
     try {
       const description = `
@@ -37,8 +44,8 @@ Date Range: ${form.date_range}
 Summary: ${form.summary}
       `;
 
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
+      await API.post("/academics/create", {
+        faculty_id: user.id,
         activity_name: "attendance_reports",
         subject: form.title,
         class_name: form.class_name,
@@ -54,19 +61,22 @@ Summary: ${form.summary}
         summary: "",
       });
     } catch (error) {
-      console.error(error);
+      console.error("Submit error:", error);
       setMessage("❌ Failed to submit report");
     }
   };
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
       <h2>📊 General Attendance Report</h2>
 
-      {/* 🔔 Message */}
       {message && <p style={styles.message}>{message}</p>}
 
-      {/* 📋 Form */}
       <form onSubmit={handleSubmit} style={styles.form}>
         <input
           type="text"
@@ -115,10 +125,7 @@ Summary: ${form.summary}
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     padding: "20px",

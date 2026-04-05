@@ -1,77 +1,100 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function AbsenteesReport() {
   const [data, setData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user data");
+  }
 
   // =========================
   // 📄 FETCH DATA
   // =========================
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/faculty/${user?.id}`
-        );
+  const fetchData = useCallback(async () => {
+    if (!user?.id) return;
 
-        const attendanceData = res.data.filter(
-          (item) => item.activity_name === "attendance_reports"
-        );
+    try {
+      setLoading(true);
+      setError("");
 
-        // 🔥 PROCESS DATA
-        const processed = attendanceData.map((item) => {
-          const dateMatch = item.description.match(/Date:\s*([^\n]+)/i);
-          const absentMatch = item.description.match(/Absent:\s*(\d+)/i);
+      const res = await API.get(`/academics/faculty/${user.id}`);
 
-          const date = dateMatch ? dateMatch[1] : "N/A";
-          const absent = absentMatch ? parseInt(absentMatch[1]) : 0;
+      const attendanceData = (res.data || []).filter(
+        (item) => item.activity_name === "attendance_reports"
+      );
 
-          return {
-            id: item.id,
-            subject: item.subject,
-            class_name: item.class_name,
-            date,
-            absent,
-            status: absent === 0, // ✔️ if no absentees
-          };
-        });
+      // 🔥 PROCESS DATA SAFELY
+      const processed = attendanceData.map((item) => {
+        const desc = item.description || "";
 
-        setData(processed);
-        setFilteredData(processed);
-      } catch (err) {
-        console.error(err);
-      }
-    };
+        const dateMatch = desc.match(/Date:\s*([^\n]+)/i);
+        const absentMatch = desc.match(/Absent:\s*(\d+)/i);
 
-    fetchData();
+        const date = dateMatch ? dateMatch[1].trim() : "N/A";
+        const absent = absentMatch ? parseInt(absentMatch[1]) : 0;
+
+        return {
+          id: item.id,
+          subject: item.subject || "N/A",
+          class_name: item.class_name || "N/A",
+          date,
+          absent,
+          status: absent === 0,
+        };
+      });
+
+      setData(processed);
+      setFilteredData(processed);
+    } catch (err) {
+      console.error(err);
+      setError("❌ Failed to load data");
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // =========================
   // 🔍 SEARCH
   // =========================
   const handleSearch = (e) => {
-    const value = e.target.value;
+    const value = e.target.value.toLowerCase();
     setSearch(value);
 
     const filtered = data.filter(
       (item) =>
-        item.subject.toLowerCase().includes(value.toLowerCase()) ||
-        item.class_name.toLowerCase().includes(value.toLowerCase())
+        (item.subject || "").toLowerCase().includes(value) ||
+        (item.class_name || "").toLowerCase().includes(value)
     );
 
     setFilteredData(filtered);
   };
 
+  // =========================
+  // UI
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
+
   return (
     <div style={styles.container}>
       <h2>🚫 Absentees Report</h2>
 
-      {/* 🔍 Search */}
+      {/* 🔍 SEARCH */}
       <input
         type="text"
         placeholder="Search by Subject or Class..."
@@ -80,27 +103,28 @@ export default function AbsenteesReport() {
         style={styles.search}
       />
 
-      {/* 📋 Table */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Subject</th>
-            <th>Class</th>
-            <th>Date</th>
-            <th>Absent Count</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+      {/* ❌ ERROR */}
+      {error && <p style={styles.error}>{error}</p>}
 
-        <tbody>
-          {filteredData.length === 0 ? (
+      {/* 📋 TABLE */}
+      {loading ? (
+        <p>Loading...</p>
+      ) : filteredData.length === 0 ? (
+        <p>No data found</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No data found
-              </td>
+              <th>Subject</th>
+              <th>Class</th>
+              <th>Date</th>
+              <th>Absent Count</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
+          </thead>
+
+          <tbody>
+            {filteredData.map((item) => (
               <tr key={item.id}>
                 <td>{item.subject}</td>
                 <td>{item.class_name}</td>
@@ -111,14 +135,13 @@ export default function AbsenteesReport() {
                   <StatusIcon status={item.status} />
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -141,9 +164,8 @@ const styles = {
     borderCollapse: "collapse",
   },
 
-  noData: {
-    textAlign: "center",
-    padding: "20px",
-    color: "#777",
+  error: {
+    color: "red",
+    marginBottom: "10px",
   },
 };

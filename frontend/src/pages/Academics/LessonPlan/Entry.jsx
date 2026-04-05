@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import API from "../../../services/api"; // ✅ use central API
 
 export default function LessonPlanEntry() {
   const [form, setForm] = useState({
@@ -13,8 +13,15 @@ export default function LessonPlanEntry() {
   });
 
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER PARSE
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user data");
+  }
 
   // =========================
   // 🔄 HANDLE INPUT
@@ -32,7 +39,21 @@ export default function LessonPlanEntry() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // 🚫 CHECK USER
+    if (!user?.id) {
+      setMessage("❌ Please login first");
+      return;
+    }
+
+    // 🚫 VALIDATION
+    if (Number(form.hours) <= 0) {
+      setMessage("❌ Hours must be greater than 0");
+      return;
+    }
+
     try {
+      setLoading(true);
+
       const description = `
 Unit: ${form.unit}
 Topic: ${form.topic}
@@ -43,17 +64,18 @@ Details:
 ${form.description}
       `;
 
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
+      await API.post("/academics/create", {
+        faculty_id: user.id,
         activity_name: "lesson_plan",
         subject: form.subject,
         class_name: form.class_name,
-        description: description,
+        description,
         status: "completed",
       });
 
       setMessage("✅ Lesson plan created successfully!");
 
+      // 🔄 RESET FORM
       setForm({
         subject: "",
         class_name: "",
@@ -66,8 +88,15 @@ ${form.description}
     } catch (err) {
       console.error(err);
       setMessage("❌ Failed to create lesson plan");
+    } finally {
+      setLoading(false);
     }
   };
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -138,6 +167,7 @@ ${form.description}
           value={form.hours}
           onChange={handleChange}
           required
+          min="1"
           style={styles.input}
         />
 
@@ -150,18 +180,15 @@ ${form.description}
           style={styles.textarea}
         />
 
-        <button type="submit" style={styles.button}>
-          Create Lesson Plan
+        <button type="submit" style={styles.button} disabled={loading}>
+          {loading ? "Submitting..." : "Create Lesson Plan"}
         </button>
       </form>
     </div>
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     padding: "20px",

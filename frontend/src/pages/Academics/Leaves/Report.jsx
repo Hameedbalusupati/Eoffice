@@ -1,43 +1,49 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../../services/api"; // ✅ use global API
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function LeaveReport() {
   const [data, setData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER PARSE
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user data");
+  }
 
   // =========================
   // 📄 FETCH LEAVES (FIXED)
   // =========================
-  useEffect(() => {
+  const fetchLeaves = useCallback(async () => {
     if (!user?.id) return;
 
-    let ignore = false;
+    try {
+      setLoading(true);
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/leaves/user/${user.id}`
-        );
+      const res = await API.get(`/academics/leaves/user/${user.id}`);
 
-        if (!ignore) {
-          setData(res.data);
-          setFilteredData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const leaves = res.data || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(leaves);
+      setFilteredData(leaves);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
+
+  // =========================
+  // 🔄 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchLeaves();
+  }, [fetchLeaves]);
 
   // =========================
   // 🔍 SEARCH
@@ -46,14 +52,20 @@ export default function LeaveReport() {
     const value = e.target.value.toLowerCase();
     setSearch(value);
 
-    const filtered = data.filter(
-      (item) =>
-        item.reason.toLowerCase().includes(value) ||
-        item.status.toLowerCase().includes(value)
-    );
+    const filtered = data.filter((item) => {
+      const reason = item.reason?.toLowerCase() || "";
+      const status = item.status?.toLowerCase() || "";
+
+      return reason.includes(value) || status.includes(value);
+    });
 
     setFilteredData(filtered);
   };
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -69,51 +81,50 @@ export default function LeaveReport() {
       />
 
       {/* 📋 TABLE */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>From</th>
-            <th>To</th>
-            <th>Reason</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No leave records found
-              </td>
+              <th>From</th>
+              <th>To</th>
+              <th>Reason</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.from_date}</td>
-                <td>{item.to_date}</td>
-                <td>{item.reason}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon
-                    status={item.status === "approved"}
-                  />
-                  <span style={{ marginLeft: "8px" }}>
-                    {item.status}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No leave records found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.from_date || "-"}</td>
+                  <td>{item.to_date || "-"}</td>
+                  <td>{item.reason || "-"}</td>
+
+                  <td>
+                    <StatusIcon status={item.status === "approved"} />
+                    <span style={{ marginLeft: "8px" }}>
+                      {item.status || "-"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     padding: "20px",

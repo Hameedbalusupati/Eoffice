@@ -1,87 +1,81 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../../services/api";
 
-export default function DayTimeTable() {
+export default function TimeTableReports() {
   const [className, setClassName] = useState("");
   const [day, setDay] = useState("");
   const [data, setData] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
-
-  // =========================
-  // 📄 FETCH TIMETABLE
-  // =========================
-  useEffect(() => {
-    if (!className || !day) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      setLoading(true);
-
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/academics/day-timetable",
-          {
-            params: {
-              faculty_id: user?.id,
-              class_name: className,
-              day: day,
-            },
-          }
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-
-      if (!ignore) {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [className, day, user?.id]);
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user data");
+  }
 
   // =========================
-  // 🔘 MANUAL FETCH
+  // 📄 FETCH ALL TIMETABLE
   // =========================
-  const handleFetch = async () => {
-    if (!className || !day) return;
-
-    setLoading(true);
+  const fetchData = useCallback(async () => {
+    if (!user?.id) return;
 
     try {
-      const res = await axios.get(
-        "http://127.0.0.1:8000/academics/day-timetable",
-        {
-          params: {
-            faculty_id: user?.id,
-            class_name: className,
-            day: day,
-          },
-        }
-      );
+      setLoading(true);
+      setError("");
 
-      setData(res.data);
+      const res = await API.get(`/academics/timetable/${user.id}`);
+
+      const result = res.data || [];
+
+      setData(result);
+      setFilteredData(result);
     } catch (err) {
       console.error(err);
+      setError("❌ Failed to load timetable");
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // =========================
+  // 🔍 FILTER
+  // =========================
+  useEffect(() => {
+    let filtered = data;
+
+    if (className) {
+      filtered = filtered.filter(
+        (item) => item.class_name === className
+      );
     }
 
-    setLoading(false);
-  };
+    if (day) {
+      filtered = filtered.filter(
+        (item) => item.day === day
+      );
+    }
+
+    setFilteredData(filtered);
+  }, [className, day, data]);
+
+  // =========================
+  // UI
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
-      <h2>📅 Day Time Table</h2>
+      <h2>📊 Timetable Reports</h2>
 
       {/* ================= FILTER ================= */}
       <div style={styles.filter}>
@@ -90,7 +84,7 @@ export default function DayTimeTable() {
           onChange={(e) => setClassName(e.target.value)}
           style={styles.select}
         >
-          <option value="">Select Class</option>
+          <option value="">All Classes</option>
           <option value="CSE-A">CSE-A</option>
           <option value="CSE-B">CSE-B</option>
           <option value="ECE-A">ECE-A</option>
@@ -101,7 +95,7 @@ export default function DayTimeTable() {
           onChange={(e) => setDay(e.target.value)}
           style={styles.select}
         >
-          <option value="">Select Day</option>
+          <option value="">All Days</option>
           <option value="Monday">Monday</option>
           <option value="Tuesday">Tuesday</option>
           <option value="Wednesday">Wednesday</option>
@@ -109,37 +103,42 @@ export default function DayTimeTable() {
           <option value="Friday">Friday</option>
           <option value="Saturday">Saturday</option>
         </select>
-
-        <button onClick={handleFetch} style={styles.button}>
-          Show
-        </button>
       </div>
+
+      {/* ================= ERROR ================= */}
+      {error && <p style={styles.error}>{error}</p>}
 
       {/* ================= TABLE ================= */}
       {loading ? (
         <p>Loading...</p>
-      ) : data.length === 0 ? (
-        <p>No timetable available</p>
+      ) : filteredData.length === 0 ? (
+        <p>No timetable records found</p>
       ) : (
         <table style={styles.table}>
           <thead>
             <tr>
-              <th>Period</th>
-              <th>Time</th>
+              <th>Day</th>
+              <th>Class</th>
               <th>Subject</th>
+              <th>Time</th>
               <th>Faculty</th>
               <th>Room</th>
             </tr>
           </thead>
 
           <tbody>
-            {data.map((item, index) => (
+            {filteredData.map((item, index) => (
               <tr key={index}>
-                <td>{item.period}</td>
-                <td>{item.time}</td>
-                <td>{item.subject}</td>
-                <td>{item.faculty}</td>
-                <td>{item.room}</td>
+                <td>{item.day || "-"}</td>
+                <td>{item.class_name || "-"}</td>
+                <td>{item.subject || "-"}</td>
+                <td>
+                  {item.start_time && item.end_time
+                    ? `${item.start_time} - ${item.end_time}`
+                    : "-"}
+                </td>
+                <td>{item.faculty || "-"}</td>
+                <td>{item.room || "-"}</td>
               </tr>
             ))}
           </tbody>
@@ -148,7 +147,6 @@ export default function DayTimeTable() {
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -166,18 +164,18 @@ const styles = {
 
   select: {
     padding: "8px",
-  },
-
-  button: {
-    padding: "8px 15px",
-    backgroundColor: "#7c3aed",
-    color: "#fff",
-    border: "none",
-    cursor: "pointer",
+    borderRadius: "5px",
+    border: "1px solid #ccc",
   },
 
   table: {
     width: "100%",
     borderCollapse: "collapse",
+    marginTop: "10px",
+  },
+
+  error: {
+    color: "red",
+    marginBottom: "10px",
   },
 };

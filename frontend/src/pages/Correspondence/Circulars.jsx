@@ -1,113 +1,130 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-import StatusIcon from "../../../components/StatusIcon";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
+import StatusIcon from "../../components/StatusIcon";
 
-export default function StaffSMS() {
+export default function Circulars() {
   const [form, setForm] = useState({
-    staff_name: "",
+    title: "",
     message: "",
   });
 
   const [data, setData] = useState([]);
   const [statusMsg, setStatusMsg] = useState("");
+  const [isError, setIsError] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ Safe user parsing
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  })();
+
+  // =========================
+  // 📄 FETCH CIRCULARS
+  // =========================
+  const fetchCirculars = useCallback(async () => {
+    if (!user?.id) return;
+
+    setLoading(true);
+    try {
+      const res = await API.get(`/correspondence/circulars/${user.id}`);
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchCirculars();
+  }, [fetchCirculars]);
 
   // =========================
   // 🔄 HANDLE INPUT
   // =========================
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
   // =========================
-  // 📄 FETCH HISTORY
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/correspondence/sms/staff/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
-
-  // =========================
-  // 🚀 SEND SMS
+  // 🚀 CREATE CIRCULAR
   // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!form.title || !form.message) {
+      setIsError(true);
+      setStatusMsg("❌ All fields are required");
+      return;
+    }
+
+    if (!user?.id) {
+      setIsError(true);
+      setStatusMsg("❌ User not logged in");
+      return;
+    }
+
     try {
-      const description = `
-Staff: ${form.staff_name}
+      await API.post("/correspondence/create-circular", {
+        faculty_id: user.id,
+        title: form.title,
+        message: form.message,
+      });
 
-Message:
-${form.message}
-      `;
+      setIsError(false);
+      setStatusMsg("📢 Circular created successfully!");
 
-      await axios.post(
-        "http://127.0.0.1:8000/correspondence/sms/send-staff",
-        {
-          faculty_id: user?.id,
-          staff_name: form.staff_name,
-          message: form.message,
-          description: description,
-        }
-      );
-
-      setStatusMsg("📩 Message sent to staff!");
-
+      // reset form
       setForm({
-        staff_name: "",
+        title: "",
         message: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/correspondence/sms/staff/${user.id}`
-      );
-      setData(res.data);
+      // refresh
+      fetchCirculars();
 
     } catch (err) {
-      console.error(err);
-      setStatusMsg("❌ Failed to send SMS");
+      console.error("Circular error:", err);
+
+      const errorMsg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "❌ Failed to create circular";
+
+      setIsError(true);
+      setStatusMsg(errorMsg);
     }
   };
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
-      <h2>📩 Staff SMS</h2>
+      <h2>📢 Circulars</h2>
 
-      {statusMsg && <p style={styles.message}>{statusMsg}</p>}
+      {statusMsg && (
+        <p
+          style={{
+            ...styles.message,
+            color: isError ? "red" : "green",
+          }}
+        >
+          {statusMsg}
+        </p>
+      )}
 
       {/* ================= FORM ================= */}
       <form onSubmit={handleSubmit} style={styles.form}>
         <input
           type="text"
-          name="staff_name"
-          placeholder="Staff Name / ID"
-          value={form.staff_name}
+          name="title"
+          placeholder="Circular Title"
+          value={form.title}
           onChange={handleChange}
           required
           style={styles.input}
@@ -115,7 +132,7 @@ ${form.message}
 
         <textarea
           name="message"
-          placeholder="Enter message..."
+          placeholder="Enter circular message..."
           value={form.message}
           onChange={handleChange}
           required
@@ -123,48 +140,47 @@ ${form.message}
         />
 
         <button type="submit" style={styles.button}>
-          Send SMS
+          Create Circular
         </button>
       </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Staff</th>
-            <th>Message</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading circulars...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="3" style={styles.noData}>
-                No messages found
-              </td>
+              <th>Title</th>
+              <th>Message</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => (
-              <tr key={item.id}>
-                <td>{item.staff_name}</td>
+          </thead>
 
-                <td style={styles.desc}>
-                  {item.message}
-                </td>
-
-                <td>
-                  <StatusIcon status={true} />
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="3" style={styles.noData}>
+                  No circulars found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              data.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.title}</td>
+                  <td style={styles.desc}>{item.message}</td>
+                  <td>
+                    <StatusIcon status={true} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -176,7 +192,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    maxWidth: "400px",
+    maxWidth: "500px",
     marginBottom: "20px",
   },
 
@@ -190,16 +206,16 @@ const styles = {
     padding: "10px",
     border: "1px solid #ccc",
     borderRadius: "5px",
-    minHeight: "100px",
+    minHeight: "120px",
   },
 
   button: {
     padding: "10px",
-    backgroundColor: "#0ea5e9",
+    backgroundColor: "#f59e0b",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {
@@ -208,7 +224,7 @@ const styles = {
   },
 
   desc: {
-    maxWidth: "300px",
+    maxWidth: "400px",
     wordWrap: "break-word",
   },
 

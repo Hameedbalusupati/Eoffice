@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function Greetings() {
@@ -11,47 +11,50 @@ export default function Greetings() {
 
   const [data, setData] = useState([]);
   const [statusMsg, setStatusMsg] = useState("");
+  const [isError, setIsError] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ Safe user parsing
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  })();
+
+  // =========================
+  // 📄 FETCH GREETINGS (FIXED)
+  // =========================
+  const fetchGreetings = useCallback(async () => {
+    if (!user?.id) return;
+
+    setLoading(true);
+    try {
+      const res = await API.get(
+        `/correspondence/greetings/${user.id}`
+      );
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  // =========================
+  // 🔁 USE EFFECT (FIXED)
+  // =========================
+  useEffect(() => {
+    fetchGreetings();
+  }, [fetchGreetings]);
 
   // =========================
   // 🔄 HANDLE INPUT
   // =========================
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
-
-  // =========================
-  // 📄 FETCH HISTORY
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/correspondence/greetings/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
 
   // =========================
   // 🚀 SEND GREETING
@@ -59,51 +62,72 @@ export default function Greetings() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!form.name || !form.message) {
+      setIsError(true);
+      setStatusMsg("❌ All fields are required");
+      return;
+    }
+
+    if (!user?.id) {
+      setIsError(true);
+      setStatusMsg("❌ User not logged in");
+      return;
+    }
+
     try {
-      const description = `
-Name: ${form.name}
-Type: ${form.type}
+      const description = `Name: ${form.name}, Type: ${form.type}, Message: ${form.message}`;
 
-Message:
-${form.message}
-      `;
+      await API.post("/correspondence/greeting", {
+        sender_id: user.id,
+        name: form.name,
+        type: form.type,
+        message: form.message,
+        description,
+      });
 
-      await axios.post(
-        "http://127.0.0.1:8000/correspondence/greeting",
-        {
-          sender_id: user?.id,
-          name: form.name,
-          type: form.type,
-          message: form.message,
-          description: description,
-        }
-      );
-
+      setIsError(false);
       setStatusMsg("🎉 Greeting sent successfully!");
 
+      // reset form
       setForm({
         name: "",
         type: "birthday",
         message: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/correspondence/greetings/${user.id}`
-      );
-      setData(res.data);
+      // refresh
+      fetchGreetings();
 
     } catch (err) {
-      console.error(err);
-      setStatusMsg("❌ Failed to send greeting");
+      console.error("Greeting error:", err);
+
+      const errorMsg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "❌ Failed to send greeting";
+
+      setIsError(true);
+      setStatusMsg(errorMsg);
     }
   };
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>🎉 Greetings</h2>
 
-      {statusMsg && <p style={styles.message}>{statusMsg}</p>}
+      {statusMsg && (
+        <p
+          style={{
+            ...styles.message,
+            color: isError ? "red" : "green",
+          }}
+        >
+          {statusMsg}
+        </p>
+      )}
 
       {/* ================= FORM ================= */}
       <form onSubmit={handleSubmit} style={styles.form}>
@@ -143,45 +167,44 @@ ${form.message}
       </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Message</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading greetings...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No greetings sent
-              </td>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Message</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => (
-              <tr key={item.id}>
-                <td>{item.name}</td>
-                <td>{item.type}</td>
+          </thead>
 
-                <td style={styles.desc}>
-                  {item.message}
-                </td>
-
-                <td>
-                  <StatusIcon status={true} />
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No greetings sent
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              data.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.name}</td>
+                  <td>{item.type}</td>
+                  <td style={styles.desc}>{item.message}</td>
+                  <td>
+                    <StatusIcon status={true} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -215,8 +238,8 @@ const styles = {
     backgroundColor: "#f59e0b",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {

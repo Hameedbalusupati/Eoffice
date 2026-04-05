@@ -1,124 +1,173 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
+import StatusIcon from "../../components/StatusIcon";
 
-export default function InternalMarksReport() {
+export default function ExaminationCirculars() {
+  const [form, setForm] = useState({
+    title: "",
+    message: "",
+  });
+
   const [data, setData] = useState([]);
-  const [search, setSearch] = useState("");
-  const [examFilter, setExamFilter] = useState("");
+  const [message, setMessage] = useState("");
+  const [isError, setIsError] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH CIRCULARS
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/examination/internal/reports"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchCirculars = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/examination/circulars");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchCirculars();
+  }, [fetchCirculars]);
+
   // =========================
-  // 🔍 FILTER LOGIC
+  // 🔄 HANDLE INPUT
   // =========================
-  const filteredData = useMemo(() => {
-    return data.filter((item) => {
-      const matchesSearch =
-        item.subject.toLowerCase().includes(search.toLowerCase()) ||
-        item.student_name.toLowerCase().includes(search.toLowerCase());
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
 
-      const matchesExam =
-        examFilter === "" || item.exam_name === examFilter;
+  // =========================
+  // 🚀 CREATE CIRCULAR
+  // =========================
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-      return matchesSearch && matchesExam;
-    });
-  }, [data, search, examFilter]);
+    if (!form.title || !form.message) {
+      setIsError(true);
+      setMessage("❌ All fields are required");
+      return;
+    }
 
+    try {
+      await API.post("/examination/circulars", {
+        title: form.title,
+        message: form.message,
+      });
+
+      setIsError(false);
+      setMessage("✅ Circular created successfully!");
+
+      // reset form
+      setForm({
+        title: "",
+        message: "",
+      });
+
+      fetchCirculars();
+
+    } catch (err) {
+      console.error("Submit error:", err);
+
+      const errorMsg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "❌ Failed to create circular";
+
+      setIsError(true);
+      setMessage(errorMsg);
+    }
+  };
+
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
-      <h2>📄 Internal Marks Report</h2>
+      <h2>📢 Examination Circulars</h2>
 
-      {/* ================= FILTERS ================= */}
-      <div style={styles.filters}>
+      {message && (
+        <p
+          style={{
+            ...styles.message,
+            color: isError ? "red" : "green",
+          }}
+        >
+          {message}
+        </p>
+      )}
+
+      {/* ================= FORM ================= */}
+      <form onSubmit={handleSubmit} style={styles.form}>
         <input
           type="text"
-          placeholder="Search by subject or student..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          name="title"
+          placeholder="Circular Title"
+          value={form.title}
+          onChange={handleChange}
+          required
           style={styles.input}
         />
 
-        <select
-          value={examFilter}
-          onChange={(e) => setExamFilter(e.target.value)}
-          style={styles.select}
-        >
-          <option value="">All Exams</option>
-          <option value="Mid-1">Mid-1</option>
-          <option value="Mid-2">Mid-2</option>
-        </select>
-      </div>
+        <textarea
+          name="message"
+          placeholder="Enter circular message..."
+          value={form.message}
+          onChange={handleChange}
+          required
+          style={styles.textarea}
+        />
+
+        <button type="submit" style={styles.button}>
+          Create Circular
+        </button>
+      </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Student</th>
-            <th>Roll No</th>
-            <th>Subject</th>
-            <th>Exam</th>
-            <th>Marks</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading circulars...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="6" style={styles.noData}>
-                No records found
-              </td>
+              <th>Title</th>
+              <th>Message</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.student_name}</td>
-                <td>{item.roll_no}</td>
-                <td>{item.subject}</td>
-                <td>{item.exam_name}</td>
-                <td>{item.marks}</td>
+          </thead>
 
-                <td>
-                  {item.marks >= 40 ? (
-                    <span style={{ color: "green" }}>Pass</span>
-                  ) : (
-                    <span style={{ color: "red" }}>Fail</span>
-                  )}
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="3" style={styles.noData}>
+                  No circulars found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              data.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.title || "—"}</td>
+                  <td style={styles.desc}>
+                    {item.message || "—"}
+                  </td>
+
+                  <td>
+                    <StatusIcon status={true} />
+                    <span style={{ marginLeft: "6px" }}>
+                      Active
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -126,23 +175,34 @@ export default function InternalMarksReport() {
 const styles = {
   container: { padding: "20px" },
 
-  filters: {
+  form: {
     display: "flex",
+    flexDirection: "column",
     gap: "10px",
-    marginBottom: "15px",
+    maxWidth: "400px",
+    marginBottom: "20px",
   },
 
   input: {
-    padding: "8px",
-    width: "250px",
+    padding: "10px",
     border: "1px solid #ccc",
     borderRadius: "5px",
   },
 
-  select: {
-    padding: "8px",
+  textarea: {
+    padding: "10px",
     border: "1px solid #ccc",
     borderRadius: "5px",
+    minHeight: "100px",
+  },
+
+  button: {
+    padding: "10px",
+    backgroundColor: "#f59e0b",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {
@@ -150,8 +210,18 @@ const styles = {
     borderCollapse: "collapse",
   },
 
+  desc: {
+    maxWidth: "400px",
+    wordWrap: "break-word",
+  },
+
   noData: {
     textAlign: "center",
     padding: "20px",
+  },
+
+  message: {
+    marginBottom: "10px",
+    fontWeight: "bold",
   },
 };

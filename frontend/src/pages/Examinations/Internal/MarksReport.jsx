@@ -1,123 +1,134 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
 
-export default function InternalAnalysis() {
+export default function InternalMarksReport() {
   const [data, setData] = useState([]);
-  const [subject, setSubject] = useState("");
+  const [search, setSearch] = useState("");
+  const [examFilter, setExamFilter] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
   // 📄 FETCH DATA
   // =========================
+  const fetchReports = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/examination/internal/reports");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // =========================
+  // 🔁 USE EFFECT
+  // =========================
   useEffect(() => {
-    if (!subject) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/examination/internal/analysis/${subject}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [subject]);
+    fetchReports();
+  }, [fetchReports]);
 
   // =========================
-  // 📊 ANALYSIS CALCULATION
+  // 🔍 FILTER LOGIC
   // =========================
-  const stats = useMemo(() => {
-    if (!data.length)
-      return { pass: 0, fail: 0, percent: 0, avg: 0 };
+  const filteredData = useMemo(() => {
+    return data.filter((item) => {
+      const matchesSearch =
+        (item.student_name || "")
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        (item.roll_no || "")
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        (item.subject || "")
+          .toLowerCase()
+          .includes(search.toLowerCase());
 
-    const pass = data.filter((s) => s.marks >= 40).length;
-    const fail = data.length - pass;
+      const matchesExam =
+        examFilter === "" || item.exam_name === examFilter;
 
-    const percent = ((pass / data.length) * 100).toFixed(2);
+      return matchesSearch && matchesExam;
+    });
+  }, [data, search, examFilter]);
 
-    const avg =
-      (
-        data.reduce((sum, s) => sum + s.marks, 0) / data.length
-      ).toFixed(2);
-
-    return { pass, fail, percent, avg };
-  }, [data]);
-
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
-      <h2>📊 Internal Exam Analysis</h2>
+      <h2>📊 Internal Marks Report</h2>
 
-      {/* ================= SUBJECT ================= */}
-      <input
-        type="text"
-        placeholder="Enter Subject (e.g. DBMS)"
-        value={subject}
-        onChange={(e) => setSubject(e.target.value)}
-        style={styles.input}
-      />
+      {/* ================= FILTERS ================= */}
+      <div style={styles.filters}>
+        <input
+          type="text"
+          placeholder="Search by name / roll / subject..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={styles.input}
+        />
 
-      {/* ================= STATS ================= */}
-      {data.length > 0 && (
-        <div style={styles.stats}>
-          <p>✅ Pass: {stats.pass}</p>
-          <p>❌ Fail: {stats.fail}</p>
-          <p>📈 Pass %: {stats.percent}%</p>
-          <p>📊 Avg Marks: {stats.avg}</p>
-        </div>
-      )}
+        <select
+          value={examFilter}
+          onChange={(e) => setExamFilter(e.target.value)}
+          style={styles.select}
+        >
+          <option value="">All Exams</option>
+          <option value="Mid-1">Mid-1</option>
+          <option value="Mid-2">Mid-2</option>
+          <option value="Assignment">Assignment</option>
+        </select>
+      </div>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Roll No</th>
-            <th>Name</th>
-            <th>Marks</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading reports...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                Enter subject to view analysis
-              </td>
+              <th>Student</th>
+              <th>Roll No</th>
+              <th>Subject</th>
+              <th>Exam</th>
+              <th>Marks</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((student) => (
-              <tr key={student.id}>
-                <td>{student.roll_no}</td>
-                <td>{student.name}</td>
-                <td>{student.marks}</td>
+          </thead>
 
-                <td>
-                  {student.marks >= 40 ? (
-                    <span style={{ color: "green" }}>Pass</span>
-                  ) : (
-                    <span style={{ color: "red" }}>Fail</span>
-                  )}
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="6" style={styles.noData}>
+                  No records found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.student_name || "—"}</td>
+                  <td>{item.roll_no || "—"}</td>
+                  <td>{item.subject || "—"}</td>
+                  <td>{item.exam_name || "—"}</td>
+                  <td>{item.marks ?? "—"}</td>
+
+                  <td>
+                    {(item.marks ?? 0) >= 40 ? (
+                      <span style={{ color: "green" }}>Pass</span>
+                    ) : (
+                      <span style={{ color: "red" }}>Fail</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -125,19 +136,23 @@ export default function InternalAnalysis() {
 const styles = {
   container: { padding: "20px" },
 
+  filters: {
+    display: "flex",
+    gap: "10px",
+    marginBottom: "15px",
+  },
+
   input: {
     padding: "8px",
     width: "250px",
-    marginBottom: "15px",
     border: "1px solid #ccc",
     borderRadius: "5px",
   },
 
-  stats: {
-    display: "flex",
-    gap: "20px",
-    marginBottom: "15px",
-    fontWeight: "bold",
+  select: {
+    padding: "8px",
+    border: "1px solid #ccc",
+    borderRadius: "5px",
   },
 
   table: {

@@ -6,8 +6,8 @@ import axios from "axios";
 // 🌐 BASE URL (SAFE)
 // =========================
 const BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  "https://eoffice-97mv.onrender.com"; // fallback
+  import.meta.env.VITE_API_BASE_URL?.trim() ||
+  "https://eoffice-97mv.onrender.com";
 
 // =========================
 // 🚀 AXIOS INSTANCE
@@ -17,25 +17,36 @@ const API = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+  timeout: 15000, // 🔥 important (Render cold start)
 });
+
+// =========================
+// 🔐 GET TOKEN SAFELY
+// =========================
+const getToken = () => {
+  try {
+    const rawUser = localStorage.getItem("user");
+    if (!rawUser) return null;
+
+    const user = JSON.parse(rawUser);
+
+    // ✅ support both formats
+    return user?.access_token || user?.token || null;
+  } catch (err) {
+    console.error("Token parse error:", err);
+    return null;
+  }
+};
 
 // =========================
 // 🔐 REQUEST INTERCEPTOR
 // =========================
 API.interceptors.request.use(
   (config) => {
-    try {
-      const rawUser = localStorage.getItem("user");
-      const user = rawUser ? JSON.parse(rawUser) : null;
+    const token = getToken();
 
-      // ✅ Handle both cases
-      const token = user?.access_token || user?.token;
-
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    } catch (error) {
-      console.error("Token parse error:", error);
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
 
     return config;
@@ -49,21 +60,28 @@ API.interceptors.request.use(
 API.interceptors.response.use(
   (response) => response,
   (error) => {
+    const status = error.response?.status;
+
     const message =
       error.response?.data?.detail ||
-      error.response?.data ||
+      error.response?.data?.message ||
       error.message;
 
     console.error("API Error:", message);
 
-    // 🔥 Auto logout if unauthorized
-    if (error.response?.status === 401) {
+    // 🔥 Handle unauthorized
+    if (status === 401) {
       localStorage.removeItem("user");
 
-      // prevent infinite reload loop
+      // avoid reload loop
       if (window.location.pathname !== "/") {
         window.location.href = "/";
       }
+    }
+
+    // 🔥 Handle network error (very common on Render cold start)
+    if (!error.response) {
+      console.error("Network error / backend may be sleeping");
     }
 
     return Promise.reject(error);

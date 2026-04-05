@@ -1,59 +1,78 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function DepartmentLibrary() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
   // 📄 FETCH DATA
   // =========================
-  useEffect(() => {
-    let ignore = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/library/department-books"
-        );
+    try {
+      const res = await API.get("/library/department-books");
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const books =
+        res.data?.data || res.data?.books || res.data || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(Array.isArray(books) ? books : []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load books");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // =========================
+  // 📊 UNIQUE DEPARTMENTS
+  // =========================
+  const departments = useMemo(() => {
+    return [
+      ...new Set(
+        data.map((b) => b?.department).filter(Boolean)
+      ),
+    ];
+  }, [data]);
 
   // =========================
   // 🔍 FILTER LOGIC
   // =========================
   const filteredData = useMemo(() => {
     return data.filter((book) => {
-      const matchesSearch =
-        book.title.toLowerCase().includes(search.toLowerCase());
+      const title = (book?.title || "").toLowerCase();
+
+      const matchesSearch = title.includes(
+        search.toLowerCase()
+      );
 
       const matchesDept =
-        deptFilter === "" || book.department === deptFilter;
+        deptFilter === "" ||
+        book?.department === deptFilter;
 
       return matchesSearch && matchesDept;
     });
   }, [data, search, deptFilter]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>🏫 Department Library</h2>
 
-      {/* ================= FILTERS ================= */}
+      {/* FILTERS */}
       <div style={styles.filters}>
         <input
           type="text"
@@ -69,53 +88,62 @@ export default function DepartmentLibrary() {
           style={styles.select}
         >
           <option value="">All Departments</option>
-          <option value="CSE">CSE</option>
-          <option value="ECE">ECE</option>
-          <option value="EEE">EEE</option>
-          <option value="MECH">MECH</option>
+          {departments.map((dept, i) => (
+            <option key={i} value={dept}>
+              {dept}
+            </option>
+          ))}
         </select>
+
+        <button onClick={fetchData} style={styles.button}>
+          Refresh
+        </button>
       </div>
 
-      {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Department</th>
-            <th>Author</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+      {/* STATUS */}
+      {loading && <p>⏳ Loading...</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
-        <tbody>
-          {filteredData.length === 0 ? (
+      {/* TABLE */}
+      {!loading && !error && (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No records found
-              </td>
+              <th>Title</th>
+              <th>Department</th>
+              <th>Author</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((book) => (
-              <tr key={book.id}>
-                <td>{book.title}</td>
-                <td>{book.department}</td>
-                <td>{book.author}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={book.available} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {book.available ? "Available" : "Issued"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No records found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((book) => (
+                <tr key={book?.id || Math.random()}>
+                  <td>{book?.title || "—"}</td>
+                  <td>{book?.department || "—"}</td>
+                  <td>{book?.author || "—"}</td>
+                  <td>
+                    <StatusIcon status={book?.available} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {book?.available ? "Available" : "Issued"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -127,6 +155,7 @@ const styles = {
     display: "flex",
     gap: "10px",
     marginBottom: "15px",
+    flexWrap: "wrap",
   },
 
   input: {
@@ -142,6 +171,15 @@ const styles = {
     borderRadius: "5px",
   },
 
+  button: {
+    padding: "8px 12px",
+    background: "#28a745",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
+
   table: {
     width: "100%",
     borderCollapse: "collapse",
@@ -150,5 +188,9 @@ const styles = {
   noData: {
     textAlign: "center",
     padding: "20px",
+  },
+
+  error: {
+    color: "red",
   },
 };

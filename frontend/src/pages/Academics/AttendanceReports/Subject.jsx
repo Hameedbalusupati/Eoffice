@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import API from "../../../../services/api"; // ✅ FIX
 import StatusIcon from "../../../../components/StatusIcon";
 
 export default function SubjectAttendance() {
@@ -7,19 +7,25 @@ export default function SubjectAttendance() {
   const [filteredData, setFilteredData] = useState([]);
   const [search, setSearch] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER FETCH
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user in localStorage");
+  }
 
   // =========================
   // 📄 FETCH DATA
   // =========================
   useEffect(() => {
+    if (!user?.id) return;
+
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/faculty/${user?.id}`
-        );
+        const res = await API.get(`/academics/faculty/${user.id}`);
 
-        const attendanceData = res.data.filter(
+        const attendanceData = (res.data || []).filter(
           (item) => item.activity_name === "attendance_reports"
         );
 
@@ -27,28 +33,32 @@ export default function SubjectAttendance() {
         const subjectMap = {};
 
         attendanceData.forEach((item) => {
+          const desc = item.description || "";
+
           let present = 0;
           let absent = 0;
 
-          const presentMatch = item.description.match(/Present:\s*(\d+)/i);
-          const absentMatch = item.description.match(/Absent:\s*(\d+)/i);
+          const presentMatch = desc.match(/Present:\s*(\d+)/i);
+          const absentMatch = desc.match(/Absent:\s*(\d+)/i);
 
-          if (presentMatch) present = parseInt(presentMatch[1]);
-          if (absentMatch) absent = parseInt(absentMatch[1]);
+          if (presentMatch) present = parseInt(presentMatch[1]) || 0;
+          if (absentMatch) absent = parseInt(absentMatch[1]) || 0;
 
-          if (!subjectMap[item.subject]) {
-            subjectMap[item.subject] = {
-              subject: item.subject,
+          const subject = item.subject || "Unknown";
+
+          if (!subjectMap[subject]) {
+            subjectMap[subject] = {
+              subject,
               totalPresent: 0,
               totalAbsent: 0,
             };
           }
 
-          subjectMap[item.subject].totalPresent += present;
-          subjectMap[item.subject].totalAbsent += absent;
+          subjectMap[subject].totalPresent += present;
+          subjectMap[subject].totalAbsent += absent;
         });
 
-        // 🔥 CALCULATE PERCENTAGE
+        // 🔥 CALCULATE %
         const result = Object.values(subjectMap).map((item) => {
           const total = item.totalPresent + item.totalAbsent;
           const percentage =
@@ -64,7 +74,7 @@ export default function SubjectAttendance() {
         setData(result);
         setFilteredData(result);
       } catch (err) {
-        console.error(err);
+        console.error("Fetch error:", err);
       }
     };
 
@@ -78,12 +88,18 @@ export default function SubjectAttendance() {
     const value = e.target.value;
     setSearch(value);
 
-    const filtered = data.filter((item) =>
-      item.subject.toLowerCase().includes(value.toLowerCase())
-    );
+    const filtered = data.filter((item) => {
+      const subject = item.subject || "";
+      return subject.toLowerCase().includes(value.toLowerCase());
+    });
 
     setFilteredData(filtered);
   };
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -120,7 +136,7 @@ export default function SubjectAttendance() {
           ) : (
             filteredData.map((item, index) => (
               <tr key={index}>
-                <td>{item.subject}</td>
+                <td>{item.subject || "-"}</td>
                 <td>{item.totalPresent}</td>
                 <td>{item.totalAbsent}</td>
                 <td>{item.percentage}%</td>
@@ -137,10 +153,7 @@ export default function SubjectAttendance() {
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     padding: "20px",

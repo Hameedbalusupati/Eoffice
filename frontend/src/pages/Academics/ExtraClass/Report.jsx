@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import API from "../../../services/api"; // ✅ FIX
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function ExtraClassReport() {
@@ -8,19 +8,23 @@ export default function ExtraClassReport() {
   const [search, setSearch] = useState("");
   const [total, setTotal] = useState(0);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER FETCH
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user in localStorage");
+  }
 
-  // =========================
   // 📄 FETCH DATA
-  // =========================
   useEffect(() => {
+    if (!user?.id) return; // ✅ prevent crash
+
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/faculty/${user?.id}`
-        );
+        const res = await API.get(`/academics/faculty/${user.id}`);
 
-        const extraClassData = res.data.filter(
+        const extraClassData = (res.data || []).filter(
           (item) => item.activity_name === "extra_class"
         );
 
@@ -28,28 +32,31 @@ export default function ExtraClassReport() {
         setFilteredData(extraClassData);
         setTotal(extraClassData.length);
       } catch (err) {
-        console.error(err);
+        console.error("Fetch error:", err);
       }
     };
 
     fetchData();
   }, [user?.id]);
 
-  // =========================
   // 🔍 SEARCH
-  // =========================
   const handleSearch = (e) => {
     const value = e.target.value;
     setSearch(value);
 
     const filtered = data.filter(
       (item) =>
-        item.subject.toLowerCase().includes(value.toLowerCase()) ||
-        item.class_name.toLowerCase().includes(value.toLowerCase())
+        item.subject?.toLowerCase().includes(value.toLowerCase()) ||
+        item.class_name?.toLowerCase().includes(value.toLowerCase())
     );
 
     setFilteredData(filtered);
   };
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -90,9 +97,9 @@ export default function ExtraClassReport() {
           ) : (
             filteredData.map((item) => (
               <tr key={item.id}>
-                <td>{item.subject}</td>
-                <td>{item.class_name}</td>
-                <td style={styles.desc}>{item.description}</td>
+                <td>{item.subject || "-"}</td>
+                <td>{item.class_name || "-"}</td>
+                <td style={styles.desc}>{item.description || "-"}</td>
 
                 <td>
                   <StatusIcon status={true} />
@@ -106,10 +113,7 @@ export default function ExtraClassReport() {
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     padding: "20px",

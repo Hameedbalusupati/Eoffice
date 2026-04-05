@@ -1,51 +1,53 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function SubscriptionReport() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/library/subscriptions"
-        );
+    try {
+      const res = await API.get("/library/subscriptions");
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const items =
+        res.data?.data || res.data?.subscriptions || res.data || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(Array.isArray(items) ? items : []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load subscriptions");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // =========================
-  // 🔍 FILTER LOGIC
+  // 🔍 FILTER LOGIC (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     return data.filter((item) => {
-      const matchesSearch =
-        item.name.toLowerCase().includes(search.toLowerCase());
+      const name = (item?.name || "").toLowerCase();
+
+      const matchesSearch = name.includes(search.toLowerCase());
 
       const matchesStatus =
         statusFilter === "" ||
-        (statusFilter === "active" && item.active) ||
-        (statusFilter === "expired" && !item.active);
+        (statusFilter === "active" && item?.active) ||
+        (statusFilter === "expired" && !item?.active);
 
       return matchesSearch && matchesStatus;
     });
@@ -55,7 +57,7 @@ export default function SubscriptionReport() {
     <div style={styles.container}>
       <h2>📚 Subscription Report</h2>
 
-      {/* ================= FILTERS ================= */}
+      {/* FILTERS */}
       <div style={styles.filters}>
         <input
           type="text"
@@ -74,50 +76,69 @@ export default function SubscriptionReport() {
           <option value="active">Active</option>
           <option value="expired">Expired</option>
         </select>
+
+        <button onClick={fetchData} style={styles.button}>
+          Refresh
+        </button>
       </div>
 
-      {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Role</th>
-            <th>Start Date</th>
-            <th>Expiry Date</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+      {/* STATUS */}
+      {loading && <p>⏳ Loading...</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
-        <tbody>
-          {filteredData.length === 0 ? (
+      {/* TABLE */}
+      {!loading && !error && (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No subscriptions found
-              </td>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Start Date</th>
+              <th>Expiry Date</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.name}</td>
-                <td>{item.role}</td>
-                <td>{item.start_date}</td>
-                <td>{item.expiry_date}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={item.active} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {item.active ? "Active" : "Expired"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No subscriptions found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item?.id || Math.random()}>
+                  <td>{item?.name || "—"}</td>
+                  <td>{item?.role || "—"}</td>
+
+                  <td>
+                    {item?.start_date
+                      ? new Date(item.start_date).toLocaleDateString()
+                      : "—"}
+                  </td>
+
+                  <td>
+                    {item?.expiry_date
+                      ? new Date(item.expiry_date).toLocaleDateString()
+                      : "—"}
+                  </td>
+
+                  <td>
+                    <StatusIcon status={item?.active} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {item?.active ? "Active" : "Expired"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -129,6 +150,7 @@ const styles = {
     display: "flex",
     gap: "10px",
     marginBottom: "15px",
+    flexWrap: "wrap",
   },
 
   input: {
@@ -144,6 +166,15 @@ const styles = {
     borderRadius: "5px",
   },
 
+  button: {
+    padding: "8px 12px",
+    background: "#007bff",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
+
   table: {
     width: "100%",
     borderCollapse: "collapse",
@@ -152,5 +183,9 @@ const styles = {
   noData: {
     textAlign: "center",
     padding: "20px",
+  },
+
+  error: {
+    color: "red",
   },
 };

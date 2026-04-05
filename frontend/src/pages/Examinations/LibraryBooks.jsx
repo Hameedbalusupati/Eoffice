@@ -1,128 +1,112 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
-export default function ExamLeavesHistory() {
+export default function ExaminationLibraryBooks() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-
-  const user = JSON.parse(localStorage.getItem("user"));
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH LEAVES
+  // 📄 FETCH BOOKS
+  // =========================
+  const fetchBooks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/library/books");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // =========================
+  // 🔁 USE EFFECT
   // =========================
   useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/examination/leaves/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
+    fetchBooks();
+  }, [fetchBooks]);
 
   // =========================
-  // 🔍 FILTER LOGIC
+  // 🔍 SEARCH FILTER
   // =========================
   const filteredData = useMemo(() => {
-    let temp = data;
+    if (!search) return data;
 
-    if (search) {
-      temp = temp.filter((item) =>
-        item.reason.toLowerCase().includes(search.toLowerCase())
-      );
-    }
+    return data.filter((book) =>
+      (book.title || "")
+        .toLowerCase()
+        .includes(search.toLowerCase()) ||
+      (book.author || "")
+        .toLowerCase()
+        .includes(search.toLowerCase()) ||
+      (book.category || "")
+        .toLowerCase()
+        .includes(search.toLowerCase())
+    );
+  }, [data, search]);
 
-    if (statusFilter) {
-      temp = temp.filter((item) => item.status === statusFilter);
-    }
-
-    return temp;
-  }, [data, search, statusFilter]);
-
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
-      <h2>📄 Examination Leave History</h2>
+      <h2>📚 Examination Library Books</h2>
 
-      {/* ================= FILTERS ================= */}
-      <div style={styles.filters}>
-        <input
-          type="text"
-          placeholder="Search by reason..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={styles.input}
-        />
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={styles.select}
-        >
-          <option value="">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-        </select>
-      </div>
+      {/* ================= SEARCH ================= */}
+      <input
+        type="text"
+        placeholder="Search by title / author / category..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={styles.input}
+      />
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>From</th>
-            <th>To</th>
-            <th>Reason</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading books...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No leave records found
-              </td>
+              <th>Title</th>
+              <th>Author</th>
+              <th>Category</th>
+              <th>Availability</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.from_date}</td>
-                <td>{item.to_date}</td>
-                <td>{item.reason}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={item.status === "approved"} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {item.status}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No books found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((book) => (
+                <tr key={book.id}>
+                  <td>{book.title || "—"}</td>
+                  <td>{book.author || "—"}</td>
+                  <td>{book.category || "—"}</td>
+
+                  <td>
+                    <StatusIcon status={book.available} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {book.available ? "Available" : "Issued"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -130,21 +114,10 @@ export default function ExamLeavesHistory() {
 const styles = {
   container: { padding: "20px" },
 
-  filters: {
-    display: "flex",
-    gap: "10px",
-    marginBottom: "15px",
-  },
-
   input: {
     padding: "8px",
-    width: "250px",
-    border: "1px solid #ccc",
-    borderRadius: "5px",
-  },
-
-  select: {
-    padding: "8px",
+    width: "320px",
+    marginBottom: "15px",
     border: "1px solid #ccc",
     borderRadius: "5px",
   },

@@ -1,51 +1,51 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 
 export default function BestUser() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/library/best-users"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/library/best-users");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // =========================
-  // 🔍 FILTER + SORT
+  // 🔁 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  // =========================
+  // 🔍 FILTER + SORT (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     let temp = data;
 
     if (search) {
       temp = temp.filter((user) =>
-        user.name.toLowerCase().includes(search.toLowerCase())
+        (user.name || "")
+          .toLowerCase()
+          .includes(search.toLowerCase())
       );
     }
 
-    // sort descending by books count
-    return [...temp].sort((a, b) => b.books_count - a.books_count);
+    // sort safely (descending)
+    return [...temp].sort(
+      (a, b) => (b.books_count || 0) - (a.books_count || 0)
+    );
   }, [data, search]);
 
   // =========================
@@ -58,6 +58,9 @@ export default function BestUser() {
     return index + 1;
   };
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>🏆 Best Library Users</h2>
@@ -72,46 +75,45 @@ export default function BestUser() {
       />
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Rank</th>
-            <th>Name</th>
-            <th>Role</th>
-            <th>Books Taken</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading users...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No users found
-              </td>
+              <th>Rank</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Books Taken</th>
             </tr>
-          ) : (
-            filteredData.map((user, index) => (
-              <tr
-                key={user.id}
-                style={
-                  index < 3
-                    ? styles.topUser
-                    : {}
-                }
-              >
-                <td>{getMedal(index)}</td>
-                <td>{user.name}</td>
-                <td>{user.role}</td>
-                <td>{user.books_count}</td>
+          </thead>
+
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No users found
+                </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((user, index) => (
+                <tr
+                  key={user.id}
+                  style={index < 3 ? styles.topUser : {}}
+                >
+                  <td>{getMedal(index)}</td>
+                  <td>{user.name || "—"}</td>
+                  <td>{user.role || "—"}</td>
+                  <td>{user.books_count ?? 0}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

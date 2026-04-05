@@ -1,103 +1,126 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
-import StatusIcon from "../../components/StatusIcon";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
+import StatusIcon from "../../../components/StatusIcon";
 
-export default function StaffVsCourses() {
+export default function ExternalAnalysis() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
   // 📄 FETCH DATA
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/employee/staff-courses"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchAnalysis = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/examination/external/analysis");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // =========================
+  // 🔁 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchAnalysis();
+  }, [fetchAnalysis]);
 
   // =========================
   // 🔍 FILTER LOGIC
   // =========================
   const filteredData = useMemo(() => {
-    if (!search) return data;
+    return data.filter((item) => {
+      const matchesSearch =
+        (item.student_name || "")
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        (item.roll_no || "")
+          .toLowerCase()
+          .includes(search.toLowerCase());
 
-    return data.filter((item) =>
-      item.staff_name.toLowerCase().includes(search.toLowerCase()) ||
-      item.course.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [data, search]);
+      const matchesSubject =
+        subjectFilter === "" || item.subject === subjectFilter;
 
+      return matchesSearch && matchesSubject;
+    });
+  }, [data, search, subjectFilter]);
+
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
-      <h2>👨‍🏫 Staff vs Courses</h2>
+      <h2>📊 External Examination Analysis</h2>
 
-      {/* ================= SEARCH ================= */}
-      <input
-        type="text"
-        placeholder="Search by staff or course..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={styles.input}
-      />
+      {/* ================= FILTERS ================= */}
+      <div style={styles.filters}>
+        <input
+          type="text"
+          placeholder="Search by name / roll no..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={styles.input}
+        />
+
+        <input
+          type="text"
+          placeholder="Filter by subject..."
+          value={subjectFilter}
+          onChange={(e) => setSubjectFilter(e.target.value)}
+          style={styles.input}
+        />
+      </div>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Staff Name</th>
-            <th>Course</th>
-            <th>Department</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading analysis...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No records found
-              </td>
+              <th>Student</th>
+              <th>Roll No</th>
+              <th>Subject</th>
+              <th>Marks</th>
+              <th>Result</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.staff_name}</td>
-                <td>{item.course}</td>
-                <td>{item.department}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={true} />
-                  <span style={{ marginLeft: "6px" }}>
-                    Assigned
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No data found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.student_name || "—"}</td>
+                  <td>{item.roll_no || "—"}</td>
+                  <td>{item.subject || "—"}</td>
+                  <td>{item.marks ?? "—"}</td>
+
+                  <td>
+                    <StatusIcon status={item.result === "pass"} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {item.result || "—"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -105,10 +128,14 @@ export default function StaffVsCourses() {
 const styles = {
   container: { padding: "20px" },
 
+  filters: {
+    display: "flex",
+    gap: "10px",
+    marginBottom: "15px",
+  },
+
   input: {
     padding: "8px",
-    width: "300px",
-    marginBottom: "15px",
     border: "1px solid #ccc",
     borderRadius: "5px",
   },

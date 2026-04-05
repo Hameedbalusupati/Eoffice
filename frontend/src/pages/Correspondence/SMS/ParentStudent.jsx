@@ -1,58 +1,60 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
-export default function MarksAttendance() {
+export default function ParentStudent() {
   const [form, setForm] = useState({
     roll_no: "",
-    subject: "",
-    marks: "",
-    attendance: "",
+    receiver: "student",
+    message: "",
   });
 
   const [data, setData] = useState([]);
-  const [message, setMessage] = useState("");
+  const [statusMsg, setStatusMsg] = useState("");
+  const [isError, setIsError] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ Safe user parsing
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  })();
+
+  // =========================
+  // 📄 FETCH HISTORY (FIXED)
+  // =========================
+  const fetchMessages = useCallback(async () => {
+    if (!user?.id) return;
+
+    setLoading(true);
+    try {
+      const res = await API.get(
+        `/correspondence/sms/parent-student/${user.id}`
+      );
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  // =========================
+  // 🔁 USE EFFECT (FIXED)
+  // =========================
+  useEffect(() => {
+    fetchMessages();
+  }, [fetchMessages]);
 
   // =========================
   // 🔄 HANDLE INPUT
   // =========================
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
-
-  // =========================
-  // 📄 FETCH HISTORY
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/correspondence/sms/marks-attendance/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
 
   // =========================
   // 🚀 SEND SMS
@@ -60,52 +62,75 @@ export default function MarksAttendance() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    try {
-      const description = `
-Roll No: ${form.roll_no}
-Subject: ${form.subject}
-Marks: ${form.marks}
-Attendance: ${form.attendance}%
-      `;
+    if (!form.roll_no || !form.message) {
+      setIsError(true);
+      setStatusMsg("❌ All fields are required");
+      return;
+    }
 
-      await axios.post(
-        "http://127.0.0.1:8000/correspondence/sms/send-marks-attendance",
+    if (!user?.id) {
+      setIsError(true);
+      setStatusMsg("❌ User not logged in");
+      return;
+    }
+
+    try {
+      const description = `Roll No: ${form.roll_no}, Receiver: ${form.receiver}, Message: ${form.message}`;
+
+      await API.post(
+        "/correspondence/sms/send-parent-student",
         {
-          faculty_id: user?.id,
+          faculty_id: user.id,
           roll_no: form.roll_no,
-          subject: form.subject,
-          marks: form.marks,
-          attendance: form.attendance,
-          description: description,
+          receiver: form.receiver,
+          message: form.message,
+          description,
         }
       );
 
-      setMessage("📩 SMS sent successfully!");
+      setIsError(false);
+      setStatusMsg("📩 Message sent successfully!");
 
+      // reset form
       setForm({
         roll_no: "",
-        subject: "",
-        marks: "",
-        attendance: "",
+        receiver: "student",
+        message: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/correspondence/sms/marks-attendance/${user.id}`
-      );
-      setData(res.data);
+      // refresh
+      fetchMessages();
 
     } catch (err) {
-      console.error(err);
-      setMessage("❌ Failed to send SMS");
+      console.error("SMS error:", err);
+
+      const errorMsg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "❌ Failed to send message";
+
+      setIsError(true);
+      setStatusMsg(errorMsg);
     }
   };
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
-      <h2>📊 Marks & Attendance SMS</h2>
+      <h2>📩 Parent / Student SMS</h2>
 
-      {message && <p style={styles.message}>{message}</p>}
+      {statusMsg && (
+        <p
+          style={{
+            ...styles.message,
+            color: isError ? "red" : "green",
+          }}
+        >
+          {statusMsg}
+        </p>
+      )}
 
       {/* ================= FORM ================= */}
       <form onSubmit={handleSubmit} style={styles.form}>
@@ -119,85 +144,69 @@ Attendance: ${form.attendance}%
           style={styles.input}
         />
 
-        <input
-          type="text"
-          name="subject"
-          placeholder="Subject"
-          value={form.subject}
+        <select
+          name="receiver"
+          value={form.receiver}
           onChange={handleChange}
-          required
           style={styles.input}
-        />
+        >
+          <option value="student">Student</option>
+          <option value="parent">Parent</option>
+        </select>
 
-        <input
-          type="number"
-          name="marks"
-          placeholder="Marks"
-          value={form.marks}
+        <textarea
+          name="message"
+          placeholder="Enter message..."
+          value={form.message}
           onChange={handleChange}
           required
-          style={styles.input}
-        />
-
-        <input
-          type="number"
-          name="attendance"
-          placeholder="Attendance (%)"
-          value={form.attendance}
-          onChange={handleChange}
-          required
-          style={styles.input}
+          style={styles.textarea}
         />
 
         <button type="submit" style={styles.button}>
-          Send SMS
+          Send Message
         </button>
       </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Roll No</th>
-            <th>Subject</th>
-            <th>Marks</th>
-            <th>Attendance</th>
-            <th>Details</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading messages...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="6" style={styles.noData}>
-                No records found
-              </td>
+              <th>Roll No</th>
+              <th>Receiver</th>
+              <th>Message</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => (
-              <tr key={item.id}>
-                <td>{item.roll_no}</td>
-                <td>{item.subject}</td>
-                <td>{item.marks}</td>
-                <td>{item.attendance}%</td>
+          </thead>
 
-                <td style={styles.desc}>
-                  {item.description}
-                </td>
-
-                <td>
-                  <StatusIcon status={true} />
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No messages found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              data.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.roll_no}</td>
+                  <td>{item.receiver}</td>
+                  <td style={styles.desc}>{item.message}</td>
+                  <td>
+                    <StatusIcon status={true} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -219,13 +228,20 @@ const styles = {
     borderRadius: "5px",
   },
 
+  textarea: {
+    padding: "10px",
+    border: "1px solid #ccc",
+    borderRadius: "5px",
+    minHeight: "100px",
+  },
+
   button: {
     padding: "10px",
-    backgroundColor: "#7c3aed",
+    backgroundColor: "#059669",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {

@@ -1,58 +1,61 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
-export default function JournalReports() {
+export default function JournalSearch() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
-  const [yearFilter, setYearFilter] = useState("");
+  const [year, setYear] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
   // 📄 FETCH JOURNALS
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/library/journals"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchJournals = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/library/journals");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // =========================
+  // 🔁 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchJournals();
+  }, [fetchJournals]);
 
   // =========================
   // 🔍 FILTER LOGIC
   // =========================
   const filteredData = useMemo(() => {
-    return data.filter((journal) => {
+    return data.filter((item) => {
       const matchesSearch =
-        journal.title.toLowerCase().includes(search.toLowerCase()) ||
-        journal.publisher.toLowerCase().includes(search.toLowerCase());
+        (item.title || "")
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        (item.publisher || "")
+          .toLowerCase()
+          .includes(search.toLowerCase());
 
       const matchesYear =
-        yearFilter === "" || journal.year.toString() === yearFilter;
+        year === "" || String(item.year || "") === year;
 
       return matchesSearch && matchesYear;
     });
-  }, [data, search, yearFilter]);
+  }, [data, search, year]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
-      <h2>📚 Journal Reports</h2>
+      <h2>🔍 Journal Search</h2>
 
       {/* ================= FILTERS ================= */}
       <div style={styles.filters}>
@@ -67,54 +70,57 @@ export default function JournalReports() {
         <input
           type="number"
           placeholder="Filter by year..."
-          value={yearFilter}
-          onChange={(e) => setYearFilter(e.target.value)}
+          value={year}
+          onChange={(e) => setYear(e.target.value)}
           style={styles.input}
         />
       </div>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Publisher</th>
-            <th>Year</th>
-            <th>Volume</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading journals...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No journals found
-              </td>
+              <th>Title</th>
+              <th>Publisher</th>
+              <th>Year</th>
+              <th>Volume</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((journal) => (
-              <tr key={journal.id}>
-                <td>{journal.title}</td>
-                <td>{journal.publisher}</td>
-                <td>{journal.year}</td>
-                <td>{journal.volume}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={journal.available} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {journal.available ? "Available" : "Issued"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No journals found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.title || "—"}</td>
+                  <td>{item.publisher || "—"}</td>
+                  <td>{item.year || "—"}</td>
+                  <td>{item.volume || "—"}</td>
+
+                  <td>
+                    <StatusIcon status={item.available} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {item.available ? "Available" : "In Use"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

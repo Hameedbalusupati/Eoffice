@@ -1,57 +1,56 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
-export default function ParentStudent() {
+export default function StaffSMS() {
   const [form, setForm] = useState({
-    roll_no: "",
-    receiver: "student",
+    staff_id: "",
     message: "",
   });
 
   const [data, setData] = useState([]);
   const [statusMsg, setStatusMsg] = useState("");
+  const [isError, setIsError] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ Safe user parsing
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  })();
+
+  // =========================
+  // 📄 FETCH HISTORY
+  // =========================
+  const fetchStaffSMS = useCallback(async () => {
+    if (!user?.id) return;
+
+    setLoading(true);
+    try {
+      const res = await API.get(
+        `/correspondence/sms/staff/${user.id}`
+      );
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchStaffSMS();
+  }, [fetchStaffSMS]);
 
   // =========================
   // 🔄 HANDLE INPUT
   // =========================
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
-
-  // =========================
-  // 📄 FETCH HISTORY
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/correspondence/sms/parent-student/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
 
   // =========================
   // 🚀 SEND SMS
@@ -59,73 +58,85 @@ export default function ParentStudent() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!form.staff_id || !form.message) {
+      setIsError(true);
+      setStatusMsg("❌ All fields are required");
+      return;
+    }
+
+    if (!user?.id) {
+      setIsError(true);
+      setStatusMsg("❌ User not logged in");
+      return;
+    }
+
     try {
-      const description = `
-Roll No: ${form.roll_no}
-Receiver: ${form.receiver}
+      const description = `Staff ID: ${form.staff_id}, Message: ${form.message}`;
 
-Message:
-${form.message}
-      `;
-
-      await axios.post(
-        "http://127.0.0.1:8000/correspondence/sms/send-parent-student",
+      await API.post(
+        "/correspondence/sms/send-staff",
         {
-          faculty_id: user?.id,
-          roll_no: form.roll_no,
-          receiver: form.receiver,
+          faculty_id: user.id,
+          staff_id: form.staff_id,
           message: form.message,
-          description: description,
+          description,
         }
       );
 
-      setStatusMsg("📩 Message sent successfully!");
+      setIsError(false);
+      setStatusMsg("📩 SMS sent to staff successfully!");
 
+      // reset form
       setForm({
-        roll_no: "",
-        receiver: "student",
+        staff_id: "",
         message: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/correspondence/sms/parent-student/${user.id}`
-      );
-      setData(res.data);
+      // refresh
+      fetchStaffSMS();
 
     } catch (err) {
-      console.error(err);
-      setStatusMsg("❌ Failed to send message");
+      console.error("SMS error:", err);
+
+      const errorMsg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "❌ Failed to send SMS";
+
+      setIsError(true);
+      setStatusMsg(errorMsg);
     }
   };
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
-      <h2>📩 Parent / Student SMS</h2>
+      <h2>👨‍🏫 Staff SMS</h2>
 
-      {statusMsg && <p style={styles.message}>{statusMsg}</p>}
+      {statusMsg && (
+        <p
+          style={{
+            ...styles.message,
+            color: isError ? "red" : "green",
+          }}
+        >
+          {statusMsg}
+        </p>
+      )}
 
       {/* ================= FORM ================= */}
       <form onSubmit={handleSubmit} style={styles.form}>
         <input
           type="text"
-          name="roll_no"
-          placeholder="Student Roll No"
-          value={form.roll_no}
+          name="staff_id"
+          placeholder="Staff ID"
+          value={form.staff_id}
           onChange={handleChange}
           required
           style={styles.input}
         />
-
-        <select
-          name="receiver"
-          value={form.receiver}
-          onChange={handleChange}
-          style={styles.input}
-        >
-          <option value="student">Student</option>
-          <option value="parent">Parent</option>
-        </select>
 
         <textarea
           name="message"
@@ -137,50 +148,49 @@ ${form.message}
         />
 
         <button type="submit" style={styles.button}>
-          Send Message
+          Send SMS
         </button>
       </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Roll No</th>
-            <th>Receiver</th>
-            <th>Message</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading messages...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No messages found
-              </td>
+              <th>Staff ID</th>
+              <th>Message</th>
+              <th>Description</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => (
-              <tr key={item.id}>
-                <td>{item.roll_no}</td>
-                <td>{item.receiver}</td>
+          </thead>
 
-                <td style={styles.desc}>
-                  {item.message}
-                </td>
-
-                <td>
-                  <StatusIcon status={true} />
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No messages found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              data.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.staff_id}</td>
+                  <td style={styles.desc}>{item.message}</td>
+                  <td style={styles.desc}>{item.description}</td>
+                  <td>
+                    <StatusIcon status={true} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -211,11 +221,11 @@ const styles = {
 
   button: {
     padding: "10px",
-    backgroundColor: "#059669",
+    backgroundColor: "#7c3aed",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {

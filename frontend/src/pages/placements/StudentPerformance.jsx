@@ -1,52 +1,61 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function StudentPerformance() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/placements/student-performance"
-        );
+    try {
+      const res = await API.get(
+        "/placements/student-performance"
+      );
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const items =
+        res.data?.data || res.data?.students || res.data || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(Array.isArray(items) ? items : []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load student performance");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // =========================
-  // 🔍 FILTER + SORT
+  // 🔍 FILTER + SORT (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     let temp = data;
 
     if (search) {
+      const query = search.toLowerCase();
+
       temp = temp.filter((item) =>
-        item.student_name.toLowerCase().includes(search.toLowerCase())
+        (item?.student_name || "")
+          .toLowerCase()
+          .includes(query)
       );
     }
 
-    // sort by score descending
-    return [...temp].sort((a, b) => b.score - a.score);
+    // sort safely
+    return [...temp].sort(
+      (a, b) => (b?.score || 0) - (a?.score || 0)
+    );
   }, [data, search]);
 
   // =========================
@@ -63,7 +72,7 @@ export default function StudentPerformance() {
     <div style={styles.container}>
       <h2>📊 Student Performance</h2>
 
-      {/* ================= SEARCH ================= */}
+      {/* SEARCH */}
       <input
         type="text"
         placeholder="Search student..."
@@ -72,53 +81,66 @@ export default function StudentPerformance() {
         style={styles.input}
       />
 
-      {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Rank</th>
-            <th>Student</th>
-            <th>Skills</th>
-            <th>Score</th>
-            <th>Company</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+      {/* STATUS */}
+      {loading && <p>⏳ Loading...</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
-        <tbody>
-          {filteredData.length === 0 ? (
+      {/* TABLE */}
+      {!loading && !error && (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="6" style={styles.noData}>
-                No records found
-              </td>
+              <th>Rank</th>
+              <th>Student</th>
+              <th>Skills</th>
+              <th>Score</th>
+              <th>Company</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item, index) => (
-              <tr
-                key={item.id}
-                style={index < 3 ? styles.top : {}}
-              >
-                <td>{getRank(index)}</td>
-                <td>{item.student_name}</td>
-                <td>{item.skills}</td>
-                <td>{item.score}</td>
-                <td>{item.company || "-"}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={item.placed} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {item.placed ? "Placed" : "Not Placed"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="6" style={styles.noData}>
+                  No records found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item, index) => (
+                <tr
+                  key={item?.id || Math.random()}
+                  style={index < 3 ? styles.top : {}}
+                >
+                  <td>{getRank(index)}</td>
+
+                  <td>{item?.student_name || "—"}</td>
+                  <td>{item?.skills || "—"}</td>
+                  <td>{item?.score ?? "—"}</td>
+                  <td>{item?.company || "-"}</td>
+
+                  <td>
+                    <StatusIcon status={item?.placed} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {item?.placed
+                        ? "Placed"
+                        : "Not Placed"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
+
+      {/* REFRESH */}
+      <button onClick={fetchData} style={styles.button}>
+        Refresh
+      </button>
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -147,5 +169,19 @@ const styles = {
   top: {
     backgroundColor: "#fef9c3",
     fontWeight: "bold",
+  },
+
+  button: {
+    marginTop: "15px",
+    padding: "8px 12px",
+    background: "#2563eb",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
+
+  error: {
+    color: "red",
   },
 };

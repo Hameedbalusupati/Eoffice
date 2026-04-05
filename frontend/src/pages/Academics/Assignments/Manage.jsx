@@ -1,24 +1,28 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import API from "../../../services/api"; // ✅ FIX
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function Manage() {
   const [data, setData] = useState([]);
   const [message, setMessage] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user") || "null");
+  // ✅ SAFE USER FETCH
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user in localStorage");
+  }
 
   // =========================
-  // 🔄 FETCH DATA (FIXED)
+  // 🔄 FETCH DATA
   // =========================
   useEffect(() => {
     if (!user?.id) return;
 
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/faculty/${user.id}`
-        );
+        const res = await API.get(`/academics/faculty/${user.id}`);
         setData(res.data || []);
       } catch (err) {
         console.error("Fetch error:", err);
@@ -26,23 +30,19 @@ export default function Manage() {
     };
 
     fetchData();
-  }, [user?.id]); // ✅ no warning now
+  }, [user?.id]);
 
   // =========================
   // ❌ DELETE
   // =========================
   const handleDelete = async (id) => {
     try {
-      await axios.delete(
-        `http://127.0.0.1:8000/academics/delete/${id}`
-      );
+      await API.delete(`/academics/delete/${id}`);
 
       setMessage("❌ Deleted successfully");
 
       // 🔄 Refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/faculty/${user?.id}`
-      );
+      const res = await API.get(`/academics/faculty/${user?.id}`);
       setData(res.data || []);
     } catch (err) {
       console.error("Delete error:", err);
@@ -58,26 +58,28 @@ export default function Manage() {
     if (!newDesc) return;
 
     try {
-      await axios.put(
-        `http://127.0.0.1:8000/academics/update/${item.id}`,
-        {
-          description: newDesc,
-          subject: item.subject,
-          class_name: item.class_name,
-        }
-      );
+      await API.put(`/academics/update/${item.id}`, {
+        description: newDesc,
+        subject: item.subject,
+        class_name: item.class_name,
+      });
 
       setMessage("✅ Updated successfully");
 
       // 🔄 Refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/faculty/${user?.id}`
-      );
+      const res = await API.get(`/academics/faculty/${user?.id}`);
       setData(res.data || []);
     } catch (err) {
       console.error("Update error:", err);
     }
   };
+
+  // =========================
+  // 🚫 NOT LOGGED IN
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>

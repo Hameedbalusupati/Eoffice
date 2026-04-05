@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import API from "../../services/api"; // ✅ use your API
 
 export default function Login() {
   const navigate = useNavigate();
@@ -8,10 +8,12 @@ export default function Login() {
   const [form, setForm] = useState({
     email: "",
     password: "",
-    role: "faculty", // default
+    role: "faculty",
   });
 
   const [message, setMessage] = useState("");
+  const [isError, setIsError] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // =========================
   // 🔄 HANDLE INPUT
@@ -29,20 +31,32 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // ✅ basic validation
+    if (!form.email || !form.password) {
+      setIsError(true);
+      setMessage("❌ Please enter email and password");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
     try {
-      const res = await axios.post(
-        "http://127.0.0.1:8000/auth/login",
-        form
-      );
+      const res = await API.post("/auth/login", form);
 
       const user = res.data;
 
-      // 💾 Save user
+      if (!user) {
+        throw new Error("Invalid response");
+      }
+
+      // 💾 Save user safely
       localStorage.setItem("user", JSON.stringify(user));
 
+      setIsError(false);
       setMessage("✅ Login successful!");
 
-      // 🔁 Redirect
+      // 🔁 Redirect based on role
       if (user.role === "faculty") {
         navigate("/dashboard");
       } else {
@@ -50,17 +64,38 @@ export default function Login() {
       }
 
     } catch (err) {
-      console.error(err);
-      setMessage("❌ Invalid credentials");
+      console.error("Login error:", err);
+
+      const errorMsg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "❌ Invalid credentials";
+
+      setIsError(true);
+      setMessage(errorMsg);
+    } finally {
+      setLoading(false);
     }
   };
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <div style={styles.card}>
         <h2>🔐 Login</h2>
 
-        {message && <p style={styles.message}>{message}</p>}
+        {message && (
+          <p
+            style={{
+              ...styles.message,
+              color: isError ? "red" : "green",
+            }}
+          >
+            {message}
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <input
@@ -93,15 +128,22 @@ export default function Login() {
             <option value="student">Student</option>
           </select>
 
-          <button type="submit" style={styles.button}>
-            Login
+          <button
+            type="submit"
+            style={{
+              ...styles.button,
+              opacity: loading ? 0.7 : 1,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+            disabled={loading}
+          >
+            {loading ? "Logging in..." : "Login"}
           </button>
         </form>
       </div>
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -119,7 +161,7 @@ const styles = {
     backgroundColor: "#fff",
     padding: "30px",
     borderRadius: "10px",
-    width: "300px",
+    width: "320px",
     boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
     textAlign: "center",
   },
@@ -127,7 +169,7 @@ const styles = {
   form: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "12px",
     marginTop: "15px",
   },
 
@@ -142,12 +184,11 @@ const styles = {
     backgroundColor: "#2563eb",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
   },
 
   message: {
     marginTop: "10px",
-    color: "red",
+    fontWeight: "bold",
   },
 };

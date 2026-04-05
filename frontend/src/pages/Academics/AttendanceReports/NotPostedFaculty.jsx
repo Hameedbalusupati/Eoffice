@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import API from "../../../../services/api"; // ✅ FIX
 import StatusIcon from "../../../../components/StatusIcon";
 
 export default function NotPostedFaculty() {
@@ -12,13 +12,13 @@ export default function NotPostedFaculty() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/activity/not-posted/attendance_reports"
+        const res = await API.get(
+          "/activity/not-posted/attendance_reports"
         );
 
-        setData(res.data);
+        setData(res.data || []);
       } catch (err) {
-        console.error(err);
+        console.error("Fetch error:", err);
       } finally {
         setLoading(false);
       }
@@ -49,7 +49,7 @@ export default function NotPostedFaculty() {
             {data.map((item) => (
               <tr key={item.faculty_id}>
                 <td>{item.faculty_id}</td>
-                <td>{item.name}</td>
+                <td>{item.name || "-"}</td>
 
                 <td>
                   <StatusIcon status={false} /> {/* ❌ always pending */}
@@ -63,10 +63,7 @@ export default function NotPostedFaculty() {
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     padding: "20px",

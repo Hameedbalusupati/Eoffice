@@ -1,47 +1,47 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function SearchReport() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH REPORT DATA
+  // 📄 FETCH REPORT DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/employee/reports"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchReports = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/employee/reports");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // =========================
-  // 🔍 FILTER LOGIC
+  // 🔁 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
+
+  // =========================
+  // 🔍 FILTER LOGIC (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     return data.filter((item) => {
       const matchesSearch =
-        item.title.toLowerCase().includes(search.toLowerCase()) ||
-        item.type.toLowerCase().includes(search.toLowerCase());
+        (item.title || "")
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        (item.type || "")
+          .toLowerCase()
+          .includes(search.toLowerCase());
 
       const matchesDate =
         dateFilter === "" || item.date === dateFilter;
@@ -50,6 +50,9 @@ export default function SearchReport() {
     });
   }, [data, search, dateFilter]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>📊 Search Report</h2>
@@ -73,47 +76,50 @@ export default function SearchReport() {
       </div>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Type</th>
-            <th>Hours</th>
-            <th>Date</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading reports...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No reports found
-              </td>
+              <th>Title</th>
+              <th>Type</th>
+              <th>Hours</th>
+              <th>Date</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.title}</td>
-                <td>{item.type}</td>
-                <td>{item.hours}</td>
-                <td>{item.date}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={true} />
-                  <span style={{ marginLeft: "6px" }}>
-                    Completed
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No reports found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.title || "—"}</td>
+                  <td>{item.type || "—"}</td>
+                  <td>{item.hours || "—"}</td>
+                  <td>{item.date || "—"}</td>
+
+                  <td>
+                    <StatusIcon status={true} />
+                    <span style={{ marginLeft: "6px" }}>
+                      Completed
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import API from "../../../../services/api"; // ✅ FIX
 import StatusIcon from "../../../../components/StatusIcon";
 
 export default function Shortage() {
@@ -7,33 +7,40 @@ export default function Shortage() {
   const [filteredData, setFilteredData] = useState([]);
   const [search, setSearch] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER FETCH
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user in localStorage");
+  }
 
   // =========================
   // 📄 FETCH DATA
   // =========================
   useEffect(() => {
+    if (!user?.id) return;
+
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/faculty/${user?.id}`
-        );
+        const res = await API.get(`/academics/faculty/${user.id}`);
 
-        const attendanceData = res.data.filter(
+        const attendanceData = (res.data || []).filter(
           (item) => item.activity_name === "attendance_reports"
         );
 
-        // 🔥 Calculate shortage
+        // 🔥 Calculate shortage safely
         const processed = attendanceData.map((item) => {
           let present = 0;
           let total = 0;
 
-          // 👉 Extract numbers from description
-          const presentMatch = item.description.match(/Present:\s*(\d+)/i);
-          const absentMatch = item.description.match(/Absent:\s*(\d+)/i);
+          const desc = item.description || "";
 
-          if (presentMatch) present = parseInt(presentMatch[1]);
-          if (absentMatch) total = present + parseInt(absentMatch[1]);
+          const presentMatch = desc.match(/Present:\s*(\d+)/i);
+          const absentMatch = desc.match(/Absent:\s*(\d+)/i);
+
+          if (presentMatch) present = parseInt(presentMatch[1]) || 0;
+          if (absentMatch) total = present + (parseInt(absentMatch[1]) || 0);
 
           const percentage = total > 0 ? (present / total) * 100 : 0;
 
@@ -47,7 +54,7 @@ export default function Shortage() {
         setData(processed);
         setFilteredData(processed);
       } catch (err) {
-        console.error(err);
+        console.error("Fetch error:", err);
       }
     };
 
@@ -61,14 +68,23 @@ export default function Shortage() {
     const value = e.target.value;
     setSearch(value);
 
-    const filtered = data.filter(
-      (item) =>
-        item.subject.toLowerCase().includes(value.toLowerCase()) ||
-        item.class_name.toLowerCase().includes(value.toLowerCase())
-    );
+    const filtered = data.filter((item) => {
+      const subject = item.subject || "";
+      const className = item.class_name || "";
+
+      return (
+        subject.toLowerCase().includes(value.toLowerCase()) ||
+        className.toLowerCase().includes(value.toLowerCase())
+      );
+    });
 
     setFilteredData(filtered);
   };
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -104,8 +120,8 @@ export default function Shortage() {
           ) : (
             filteredData.map((item) => (
               <tr key={item.id}>
-                <td>{item.subject}</td>
-                <td>{item.class_name}</td>
+                <td>{item.subject || "-"}</td>
+                <td>{item.class_name || "-"}</td>
                 <td>{item.percentage}%</td>
 
                 <td>
@@ -120,10 +136,7 @@ export default function Shortage() {
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     padding: "20px",

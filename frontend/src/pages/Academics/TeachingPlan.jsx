@@ -1,19 +1,61 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
-export default function TeachingLoadDistribution() {
+export default function TeachingPlan() {
   const [form, setForm] = useState({
-    faculty_name: "",
     subject: "",
     class_name: "",
+    topic: "",
+    date: "",
     hours: "",
+    description: "",
   });
 
   const [data, setData] = useState([]);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user");
+  }
+
+  // =========================
+  // 📄 FETCH TEACHING PLAN
+  // =========================
+  const fetchData = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await API.get(
+        `/academics/faculty/${user.id}`
+      );
+
+      // 🔥 filter teaching plan
+      const plans = (res.data || []).filter(
+        (item) => item.activity_name === "teaching_plan"
+      );
+
+      setData(plans);
+    } catch (err) {
+      console.error(err);
+      setError("❌ Failed to load teaching plan");
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // =========================
   // 🔄 HANDLE INPUT
@@ -26,96 +68,72 @@ export default function TeachingLoadDistribution() {
   };
 
   // =========================
-  // 📄 FETCH LOAD DATA
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/teaching-load/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
-
-  // =========================
-  // 🚀 ADD LOAD
+  // 🚀 SUBMIT
   // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!user?.id) {
+      setMessage("❌ Please login");
+      return;
+    }
+
     try {
+      setLoading(true);
+      setMessage("");
+
       const description = `
-Faculty: ${form.faculty_name}
-Subject: ${form.subject}
-Class: ${form.class_name}
-Weekly Hours: ${form.hours}
+Date: ${form.date}
+Topic: ${form.topic}
+Hours: ${form.hours}
+
+Details:
+${form.description}
       `;
 
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
-        activity_name: "teaching_load",
+      await API.post("/academics/create", {
+        faculty_id: user.id,
+        activity_name: "teaching_plan",
         subject: form.subject,
         class_name: form.class_name,
-        description: description,
+        description,
         status: "completed",
       });
 
-      setMessage("📊 Teaching load added successfully!");
+      setMessage("📘 Teaching plan added successfully!");
 
       setForm({
-        faculty_name: "",
         subject: "",
         class_name: "",
+        topic: "",
+        date: "",
         hours: "",
+        description: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/teaching-load/${user.id}`
-      );
-      setData(res.data);
-
+      fetchData(); // 🔄 refresh
     } catch (err) {
       console.error(err);
-      setMessage("❌ Failed to add load");
+      setMessage("❌ Failed to add teaching plan");
+    } finally {
+      setLoading(false);
     }
   };
 
+  // =========================
+  // UI
+  // =========================
+  if (!user) return <h2>Please login</h2>;
+
   return (
     <div style={styles.container}>
-      <h2>📊 Teaching Load Distribution</h2>
+      <h2>📘 Teaching Plan</h2>
 
-      {message && <p style={styles.message}>{message}</p>}
+      {message && <p style={styles.success}>{message}</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
       {/* ================= FORM ================= */}
       <form onSubmit={handleSubmit} style={styles.form}>
-        <input
-          type="text"
-          name="faculty_name"
-          placeholder="Faculty Name"
-          value={form.faculty_name}
-          onChange={handleChange}
-          required
-          style={styles.input}
-        />
-
         <input
           type="text"
           name="subject"
@@ -129,8 +147,27 @@ Weekly Hours: ${form.hours}
         <input
           type="text"
           name="class_name"
-          placeholder="Class (e.g. CSE-A)"
+          placeholder="Class"
           value={form.class_name}
+          onChange={handleChange}
+          required
+          style={styles.input}
+        />
+
+        <input
+          type="text"
+          name="topic"
+          placeholder="Topic"
+          value={form.topic}
+          onChange={handleChange}
+          required
+          style={styles.input}
+        />
+
+        <input
+          type="date"
+          name="date"
+          value={form.date}
           onChange={handleChange}
           required
           style={styles.input}
@@ -139,45 +176,49 @@ Weekly Hours: ${form.hours}
         <input
           type="number"
           name="hours"
-          placeholder="Weekly Hours"
+          placeholder="Hours"
           value={form.hours}
           onChange={handleChange}
           required
           style={styles.input}
         />
 
-        <button type="submit" style={styles.button}>
-          Add Load
+        <textarea
+          name="description"
+          placeholder="Additional Notes"
+          value={form.description}
+          onChange={handleChange}
+          style={styles.textarea}
+        />
+
+        <button type="submit" style={styles.button} disabled={loading}>
+          {loading ? "Adding..." : "Add Plan"}
         </button>
       </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Subject</th>
-            <th>Class</th>
-            <th>Description</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading...</p>
+      ) : data.length === 0 ? (
+        <p>No teaching plans found</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No load data found
-              </td>
+              <th>Subject</th>
+              <th>Class</th>
+              <th>Description</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => (
+          </thead>
+
+          <tbody>
+            {data.map((item) => (
               <tr key={item.id}>
                 <td>{item.subject}</td>
                 <td>{item.class_name}</td>
 
-                <td style={styles.desc}>
-                  {item.description}
-                </td>
+                <td style={styles.desc}>{item.description}</td>
 
                 <td>
                   <StatusIcon
@@ -185,14 +226,13 @@ Weekly Hours: ${form.hours}
                   />
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -214,13 +254,20 @@ const styles = {
     borderRadius: "5px",
   },
 
+  textarea: {
+    padding: "10px",
+    border: "1px solid #ccc",
+    borderRadius: "5px",
+    minHeight: "80px",
+  },
+
   button: {
     padding: "10px",
-    backgroundColor: "#14b8a6",
+    backgroundColor: "#2563eb",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {
@@ -233,13 +280,13 @@ const styles = {
     wordWrap: "break-word",
   },
 
-  noData: {
-    textAlign: "center",
-    padding: "20px",
+  success: {
+    color: "green",
+    marginBottom: "10px",
   },
 
-  message: {
+  error: {
+    color: "red",
     marginBottom: "10px",
-    fontWeight: "bold",
   },
 };

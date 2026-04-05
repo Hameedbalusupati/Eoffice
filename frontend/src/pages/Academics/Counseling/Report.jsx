@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import API from "../../../../services/api"; // ✅ FIX
 import StatusIcon from "../../../../components/StatusIcon";
 
 export default function CounselingReport() {
@@ -8,30 +8,40 @@ export default function CounselingReport() {
   const [search, setSearch] = useState("");
   const [total, setTotal] = useState(0);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER FETCH
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user in localStorage");
+  }
 
   // =========================
   // 📄 FETCH DATA
   // =========================
   useEffect(() => {
+    if (!user?.id) return;
+
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/faculty/${user?.id}`
-        );
+        const res = await API.get(`/academics/faculty/${user.id}`);
 
-        const counselingData = res.data.filter(
+        const counselingData = (res.data || []).filter(
           (item) => item.activity_name === "counseling"
         );
 
-        // 🔥 Extract student info from description
+        // 🔥 SAFE PROCESSING
         const processed = counselingData.map((item) => {
-          const studentMatch = item.description.match(/Student:\s*(.*)/i);
+          const desc = item.description || "";
+
+          const studentMatch = desc.match(/Student:\s*(.*)/i);
 
           return {
             ...item,
-            student: studentMatch ? studentMatch[1] : item.subject,
-            status: true, // always completed
+            student: studentMatch
+              ? studentMatch[1]
+              : item.subject || "Unknown",
+            status: true,
           };
         });
 
@@ -39,7 +49,7 @@ export default function CounselingReport() {
         setFilteredData(processed);
         setTotal(processed.length);
       } catch (err) {
-        console.error(err);
+        console.error("Fetch error:", err);
       }
     };
 
@@ -53,14 +63,23 @@ export default function CounselingReport() {
     const value = e.target.value;
     setSearch(value);
 
-    const filtered = data.filter(
-      (item) =>
-        item.student.toLowerCase().includes(value.toLowerCase()) ||
-        item.class_name.toLowerCase().includes(value.toLowerCase())
-    );
+    const filtered = data.filter((item) => {
+      const student = item.student || "";
+      const className = item.class_name || "";
+
+      return (
+        student.toLowerCase().includes(value.toLowerCase()) ||
+        className.toLowerCase().includes(value.toLowerCase())
+      );
+    });
 
     setFilteredData(filtered);
   };
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -102,8 +121,8 @@ export default function CounselingReport() {
             filteredData.map((item) => (
               <tr key={item.id}>
                 <td>{item.student}</td>
-                <td>{item.class_name}</td>
-                <td style={styles.desc}>{item.description}</td>
+                <td>{item.class_name || "-"}</td>
+                <td style={styles.desc}>{item.description || "-"}</td>
 
                 <td>
                   <StatusIcon status={true} />
@@ -117,10 +136,7 @@ export default function CounselingReport() {
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     padding: "20px",

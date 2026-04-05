@@ -1,55 +1,59 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function BackVolumeReport() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [yearFilter, setYearFilter] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/library/backvolumes"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchBackVolumes = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/library/backvolumes");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // =========================
-  // 🔍 FILTER LOGIC
+  // 🔁 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchBackVolumes();
+  }, [fetchBackVolumes]);
+
+  // =========================
+  // 🔍 FILTER LOGIC (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     return data.filter((item) => {
       const matchesSearch =
-        item.title.toLowerCase().includes(search.toLowerCase()) ||
-        item.author.toLowerCase().includes(search.toLowerCase());
+        (item.title || "")
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        (item.author || "")
+          .toLowerCase()
+          .includes(search.toLowerCase());
 
       const matchesYear =
-        yearFilter === "" || item.year.toString() === yearFilter;
+        yearFilter === "" ||
+        String(item.year || "") === yearFilter;
 
       return matchesSearch && matchesYear;
     });
   }, [data, search, yearFilter]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>📚 Back Volumes Report</h2>
@@ -74,47 +78,50 @@ export default function BackVolumeReport() {
       </div>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Author</th>
-            <th>Year</th>
-            <th>Volume</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading records...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No records found
-              </td>
+              <th>Title</th>
+              <th>Author</th>
+              <th>Year</th>
+              <th>Volume</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.title}</td>
-                <td>{item.author}</td>
-                <td>{item.year}</td>
-                <td>{item.volume}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={item.available} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {item.available ? "Available" : "Issued"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No records found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.title || "—"}</td>
+                  <td>{item.author || "—"}</td>
+                  <td>{item.year || "—"}</td>
+                  <td>{item.volume || "—"}</td>
+
+                  <td>
+                    <StatusIcon status={item.available} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {item.available ? "Available" : "Issued"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

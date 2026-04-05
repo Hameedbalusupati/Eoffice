@@ -1,41 +1,46 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function Inbox() {
   const [data, setData] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ Safe user parsing
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  })();
 
   // =========================
-  // 📄 FETCH MESSAGES
+  // 📄 FETCH MESSAGES (FIXED)
   // =========================
-  useEffect(() => {
+  const fetchInbox = useCallback(async () => {
     if (!user?.id) return;
 
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/correspondence/inbox/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+    setLoading(true);
+    try {
+      const res = await API.get(
+        `/correspondence/inbox/${user.id}`
+      );
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
+
+  // =========================
+  // 🔁 USE EFFECT (FIXED)
+  // =========================
+  useEffect(() => {
+    fetchInbox();
+  }, [fetchInbox]);
 
   // =========================
   // 👁️ VIEW MESSAGE
@@ -45,22 +50,24 @@ export default function Inbox() {
 
     // mark as read
     try {
-      await axios.put(
-        `http://127.0.0.1:8000/correspondence/inbox/read/${msg.id}`
+      await API.put(
+        `/correspondence/inbox/read/${msg.id}`
       );
 
-      // update UI
+      // update UI instantly
       setData((prev) =>
         prev.map((item) =>
           item.id === msg.id ? { ...item, read: true } : item
         )
       );
-
     } catch (err) {
-      console.error(err);
+      console.error("Read update error:", err);
     }
   };
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>📥 Inbox</h2>
@@ -68,7 +75,9 @@ export default function Inbox() {
       <div style={styles.layout}>
         {/* ================= LIST ================= */}
         <div style={styles.list}>
-          {data.length === 0 ? (
+          {loading ? (
+            <p>Loading messages...</p>
+          ) : data.length === 0 ? (
             <p>No messages</p>
           ) : (
             data.map((item) => (
@@ -81,8 +90,11 @@ export default function Inbox() {
                 onClick={() => handleView(item)}
               >
                 <h4>{item.title || item.type}</h4>
+
                 <p style={styles.preview}>
-                  {item.message?.slice(0, 40)}...
+                  {item.message
+                    ? item.message.slice(0, 40) + "..."
+                    : "No content"}
                 </p>
 
                 <div style={styles.meta}>
@@ -104,7 +116,7 @@ export default function Inbox() {
               <p><b>From:</b> {selected.sender || "System"}</p>
 
               <div style={styles.messageBox}>
-                {selected.message}
+                {selected.message || "No message content"}
               </div>
             </>
           ) : (
@@ -115,7 +127,6 @@ export default function Inbox() {
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -138,6 +149,7 @@ const styles = {
     padding: "10px",
     borderBottom: "1px solid #ddd",
     cursor: "pointer",
+    transition: "0.2s",
   },
 
   preview: {

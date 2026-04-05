@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import API from "../../../../services/api"; // ✅ use central API
 
 export default function Assign() {
   const [form, setForm] = useState({
@@ -18,9 +18,7 @@ export default function Assign() {
     console.error("Invalid user in localStorage");
   }
 
-  // =========================
   // 🔄 HANDLE INPUT
-  // =========================
   const handleChange = (e) => {
     setForm({
       ...form,
@@ -28,29 +26,23 @@ export default function Assign() {
     });
   };
 
-  // =========================
   // 🚀 SUBMIT FORM
-  // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // ❗ CHECK USER
     if (!user?.id) {
       setMessage("❌ Please login first");
       return;
     }
 
     try {
-      const response = await axios.post(
-        "http://127.0.0.1:8000/academics/create",
-        {
-          faculty_id: user.id,
-          activity_name: "assignments",
-          subject: form.subject,
-          class_name: form.class_name,
-          description: form.description,
-        }
-      );
+      const response = await API.post("/academics/create", {
+        faculty_id: user.id,
+        activity_name: "assignments",
+        subject: form.subject,
+        class_name: form.class_name,
+        description: form.description,
+      });
 
       setMessage("✅ Assignment submitted successfully!");
 
@@ -71,10 +63,8 @@ export default function Assign() {
     <div style={styles.container}>
       <h2>📘 Assignments</h2>
 
-      {/* ✅ Message */}
       {message && <p style={styles.message}>{message}</p>}
 
-      {/* 🔥 Form */}
       <form onSubmit={handleSubmit} style={styles.form}>
         <input
           type="text"

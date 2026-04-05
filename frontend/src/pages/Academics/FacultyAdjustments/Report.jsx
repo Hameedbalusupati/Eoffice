@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import API from "../../../services/api"; // ✅ FIX
 
 export default function FacultyAdjustmentEntry() {
   const [form, setForm] = useState({
@@ -15,60 +15,65 @@ export default function FacultyAdjustmentEntry() {
   const [freeFaculty, setFreeFaculty] = useState([]);
   const [message, setMessage] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user");
+  }
 
-  // =========================
   // 🔄 HANDLE INPUT
-  // =========================
   const handleChange = (e) => {
     const { name, value, files } = e.target;
 
     if (name === "signature") {
-      setForm({ ...form, signature: files[0] });
+      setForm((prev) => ({ ...prev, signature: files[0] }));
     } else {
-      setForm({ ...form, [name]: value });
+      setForm((prev) => ({ ...prev, [name]: value }));
     }
   };
 
-  // =========================
-  // 🔥 FETCH FREE FACULTY (FINAL FIX)
-  // =========================
+  // 🔥 FETCH FREE FACULTY
   useEffect(() => {
     if (!form.date || !form.time) return;
 
-    let ignore = false; // ✅ prevents unwanted re-renders
+    let ignore = false;
 
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/schedule/free-faculty?date=${form.date}&time=${form.time}`
+        const res = await API.get(
+          `/schedule/free-faculty?date=${form.date}&time=${form.time}`
         );
 
         if (!ignore) {
-          setFreeFaculty(res.data);
+          setFreeFaculty(res.data || []);
         }
       } catch (error) {
-        console.error(error);
+        console.error("Fetch error:", error);
       }
     };
 
     fetchData();
 
     return () => {
-      ignore = true; // cleanup
+      ignore = true;
     };
-  }, [form.date, form.time]); // ✅ correct dependencies
+  }, [form.date, form.time]);
 
-  // =========================
   // 🚀 SUBMIT
-  // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!user?.id) {
+      setMessage("❌ Please login first");
+      return;
+    }
 
     try {
       const formData = new FormData();
 
-      formData.append("faculty_id", user?.id);
+      formData.append("faculty_id", user.id);
       formData.append("activity_name", "faculty_adjustments");
       formData.append("subject", form.subject);
       formData.append("class_name", form.class_name);
@@ -76,17 +81,16 @@ export default function FacultyAdjustmentEntry() {
       formData.append("date", form.date);
       formData.append("time", form.time);
       formData.append("description", form.description);
-      formData.append("signature", form.signature);
 
-      await axios.post(
-        "http://127.0.0.1:8000/academics/adjustment",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+      if (form.signature) {
+        formData.append("signature", form.signature);
+      }
+
+      await API.post("/academics/adjustment", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
 
       setMessage("✅ Faculty adjustment recorded successfully!");
 
@@ -102,10 +106,14 @@ export default function FacultyAdjustmentEntry() {
 
       setFreeFaculty([]);
     } catch (error) {
-      console.error(error);
+      console.error("Submit error:", error);
       setMessage("❌ Failed to record adjustment");
     }
   };
+
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -152,7 +160,6 @@ export default function FacultyAdjustmentEntry() {
           style={styles.input}
         />
 
-        {/* 🔥 FREE FACULTY */}
         <select
           name="replacement_faculty"
           value={form.replacement_faculty}
@@ -168,13 +175,11 @@ export default function FacultyAdjustmentEntry() {
           ))}
         </select>
 
-        {/* ✍ SIGNATURE */}
         <input
           type="file"
           name="signature"
           accept="image/*"
           onChange={handleChange}
-          required
           style={styles.input}
         />
 
@@ -194,10 +199,7 @@ export default function FacultyAdjustmentEntry() {
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: { padding: "20px" },
 

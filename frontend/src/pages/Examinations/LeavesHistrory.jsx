@@ -1,133 +1,137 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
-export default function ExamCirculars() {
+export default function ExaminationLeavesHistory() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH CIRCULARS
+  // 📄 FETCH DATA
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/examination/circulars"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchLeaves = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/examination/leaves");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // =========================
-  // 🔍 FILTER
+  // 🔁 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchLeaves();
+  }, [fetchLeaves]);
+
+  // =========================
+  // 🔍 FILTER LOGIC
   // =========================
   const filteredData = useMemo(() => {
-    if (!search) return data;
+    let temp = data;
 
-    return data.filter((item) =>
-      item.title.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [data, search]);
-
-  // =========================
-  // 👁️ VIEW CIRCULAR
-  // =========================
-  const handleView = async (item) => {
-    setSelected(item);
-
-    try {
-      await axios.put(
-        `http://127.0.0.1:8000/examination/circular/read/${item.id}`
+    if (search) {
+      temp = temp.filter((item) =>
+        (item.reason || "")
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        (item.employee_name || "")
+          .toLowerCase()
+          .includes(search.toLowerCase())
       );
-
-      setData((prev) =>
-        prev.map((c) =>
-          c.id === item.id ? { ...c, read: true } : c
-        )
-      );
-    } catch (err) {
-      console.error(err);
     }
-  };
 
+    if (statusFilter) {
+      temp = temp.filter(
+        (item) => item.status === statusFilter
+      );
+    }
+
+    return temp;
+  }, [data, search, statusFilter]);
+
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
-      <h2>📢 Examination Circulars</h2>
+      <h2>📄 Examination Leave History</h2>
 
-      {/* ================= SEARCH ================= */}
-      <input
-        type="text"
-        placeholder="Search circular..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={styles.input}
-      />
+      {/* ================= FILTER ================= */}
+      <div style={styles.filter}>
+        <input
+          type="text"
+          placeholder="Search by reason or employee..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={styles.input}
+        />
 
-      <div style={styles.layout}>
-        {/* ================= LIST ================= */}
-        <div style={styles.list}>
-          {filteredData.length === 0 ? (
-            <p>No circulars found</p>
-          ) : (
-            filteredData.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  ...styles.item,
-                  backgroundColor: item.read ? "#fff" : "#dcfce7",
-                }}
-                onClick={() => handleView(item)}
-              >
-                <h4>{item.title}</h4>
-                <p style={styles.preview}>
-                  {item.message.slice(0, 40)}...
-                </p>
-
-                <div style={styles.meta}>
-                  <span>{item.date}</span>
-                  <StatusIcon status={item.read} />
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* ================= DETAILS ================= */}
-        <div style={styles.details}>
-          {selected ? (
-            <>
-              <h3>{selected.title}</h3>
-              <p><b>Date:</b> {selected.date}</p>
-
-              <div style={styles.messageBox}>
-                {selected.message}
-              </div>
-            </>
-          ) : (
-            <p>Select a circular to view</p>
-          )}
-        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={styles.select}
+        >
+          <option value="">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
       </div>
+
+      {/* ================= TABLE ================= */}
+      {loading ? (
+        <p>Loading leave records...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>From</th>
+              <th>To</th>
+              <th>Reason</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No leave records found
+                </td>
+              </tr>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.employee_name || "—"}</td>
+                  <td>{item.from_date || "—"}</td>
+                  <td>{item.to_date || "—"}</td>
+                  <td>{item.reason || "—"}</td>
+
+                  <td>
+                    <StatusIcon
+                      status={item.status === "approved"}
+                    />
+                    <span style={{ marginLeft: "6px" }}>
+                      {item.status}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -135,52 +139,32 @@ export default function ExamCirculars() {
 const styles = {
   container: { padding: "20px" },
 
+  filter: {
+    display: "flex",
+    gap: "10px",
+    marginBottom: "15px",
+  },
+
   input: {
     padding: "8px",
-    width: "300px",
-    marginBottom: "15px",
+    width: "250px",
     border: "1px solid #ccc",
     borderRadius: "5px",
   },
 
-  layout: {
-    display: "flex",
-    gap: "20px",
-  },
-
-  list: {
-    width: "35%",
-    borderRight: "1px solid #ccc",
-    paddingRight: "10px",
-  },
-
-  item: {
-    padding: "10px",
-    borderBottom: "1px solid #ddd",
-    cursor: "pointer",
-  },
-
-  preview: {
-    fontSize: "12px",
-    color: "#555",
-  },
-
-  meta: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: "12px",
-    marginTop: "5px",
-  },
-
-  details: {
-    flex: 1,
-    padding: "10px",
-  },
-
-  messageBox: {
-    marginTop: "10px",
-    padding: "10px",
-    backgroundColor: "#f9fafb",
+  select: {
+    padding: "8px",
+    border: "1px solid #ccc",
     borderRadius: "5px",
+  },
+
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+  },
+
+  noData: {
+    textAlign: "center",
+    padding: "20px",
   },
 };

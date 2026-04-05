@@ -1,21 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import API from "../services/api";
 
 export default function Dashboard() {
   const navigate = useNavigate();
 
-  // 👨‍🏫 FACULTY LOGIN
-  const [faculty, setFaculty] = useState({
-    email: "",
-    password: "",
-  });
+  // STATES
+  const [faculty, setFaculty] = useState({ email: "", password: "" });
+  const [student, setStudent] = useState({ email: "", password: "" });
 
-  // 🎓 STUDENT LOGIN
-  const [student, setStudent] = useState({
-    email: "",
-    password: "",
-  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
   // HANDLE CHANGE
@@ -29,43 +24,43 @@ export default function Dashboard() {
   };
 
   // =========================
-  // LOGIN FUNCTIONS
+  // LOGIN FUNCTION (COMMON)
   // =========================
-  const handleFacultyLogin = async () => {
-    try {
-      const res = await axios.post(
-        "http://127.0.0.1:8000/auth/login",
-        {
-          email: faculty.email,   // ✅ FIXED
-          password: faculty.password,
-        }
-      );
-
-      localStorage.setItem("user", JSON.stringify(res.data.user)); // ✅ FIXED
-
-      navigate("/academics/manage"); // ✅ VALID ROUTE
-    } catch (error) {
-      console.error("Faculty login error:", error);
-      alert("Faculty Login Failed");
+  const login = async (credentials, role) => {
+    if (!credentials.email || !credentials.password) {
+      alert("Email and Password required!");
+      return;
     }
-  };
 
-  const handleStudentLogin = async () => {
+    setLoading(true);
+    setError("");
+
     try {
-      const res = await axios.post(
-        "http://127.0.0.1:8000/auth/login",
-        {
-          email: student.email,   // ✅ FIXED
-          password: student.password,
-        }
-      );
+      const res = await API.post("/auth/login", credentials);
 
-      localStorage.setItem("user", JSON.stringify(res.data.user));
+      // 🔐 store full response (IMPORTANT)
+      const userData = res.data;
 
-      navigate("/"); // or create student dashboard later
-    } catch (error) {
-      console.error("Student login error:", error);
-      alert("Student Login Failed");
+      localStorage.setItem("user", JSON.stringify(userData));
+
+      // 🚀 NAVIGATION
+      if (role === "faculty") {
+        navigate("/academics/manage");
+      } else {
+        navigate("/");
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+
+      const msg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "Login failed";
+
+      setError(msg);
+      alert(msg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -96,8 +91,12 @@ export default function Dashboard() {
             style={styles.input}
           />
 
-          <button style={styles.button} onClick={handleFacultyLogin}>
-            LOGIN
+          <button
+            style={styles.button}
+            onClick={() => login(faculty, "faculty")}
+            disabled={loading}
+          >
+            {loading ? "Logging in..." : "LOGIN"}
           </button>
         </div>
 
@@ -123,22 +122,31 @@ export default function Dashboard() {
             style={styles.input}
           />
 
-          <button style={styles.button} onClick={handleStudentLogin}>
-            LOGIN
+          <button
+            style={styles.button}
+            onClick={() => login(student, "student")}
+            disabled={loading}
+          >
+            {loading ? "Logging in..." : "LOGIN"}
           </button>
         </div>
       </div>
+
+      {/* ERROR */}
+      {error && <p style={styles.error}>{error}</p>}
     </div>
   );
 }
 
+// =========================
 // 🎨 STYLES
+// =========================
 const styles = {
   container: {
     textAlign: "center",
     padding: "40px",
     backgroundColor: "#f3f4f6",
-    height: "100vh",
+    minHeight: "100vh",
   },
 
   title: {
@@ -150,6 +158,7 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     gap: "40px",
+    flexWrap: "wrap",
   },
 
   card: {
@@ -177,5 +186,10 @@ const styles = {
     border: "none",
     borderRadius: "5px",
     cursor: "pointer",
+  },
+
+  error: {
+    color: "red",
+    marginTop: "15px",
   },
 };

@@ -1,52 +1,59 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function LeaveHistory() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ Safe user parsing
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  })();
 
   // =========================
-  // 📄 FETCH LEAVE HISTORY
+  // 📄 FETCH LEAVE HISTORY (FIXED)
   // =========================
-  useEffect(() => {
+  const fetchLeaves = useCallback(async () => {
     if (!user?.id) return;
 
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/correspondence/leaves/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+    setLoading(true);
+    try {
+      const res = await API.get(
+        `/correspondence/leaves/${user.id}`
+      );
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
 
   // =========================
-  // 🔥 FILTER (OPTIMIZED)
+  // 🔁 USE EFFECT (FIXED)
+  // =========================
+  useEffect(() => {
+    fetchLeaves();
+  }, [fetchLeaves]);
+
+  // =========================
+  // 🔍 FILTER (SAFE + OPTIMIZED)
   // =========================
   const filteredData = useMemo(() => {
     let temp = data;
 
     if (search) {
       temp = temp.filter((item) =>
-        item.reason.toLowerCase().includes(search.toLowerCase())
+        (item.reason || "")
+          .toLowerCase()
+          .includes(search.toLowerCase())
       );
     }
 
@@ -57,6 +64,9 @@ export default function LeaveHistory() {
     return temp;
   }, [data, search, statusFilter]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>📄 Leave History</h2>
@@ -84,47 +94,50 @@ export default function LeaveHistory() {
       </div>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>From</th>
-            <th>To</th>
-            <th>Reason</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading leave records...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No leave records found
-              </td>
+              <th>From</th>
+              <th>To</th>
+              <th>Reason</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.from_date}</td>
-                <td>{item.to_date}</td>
-                <td>{item.reason}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon
-                    status={item.status === "approved"}
-                  />
-                  <span style={{ marginLeft: "6px" }}>
-                    {item.status}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No leave records found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.from_date}</td>
+                  <td>{item.to_date}</td>
+                  <td>{item.reason || "—"}</td>
+
+                  <td>
+                    <StatusIcon
+                      status={item.status === "approved"}
+                    />
+                    <span style={{ marginLeft: "6px" }}>
+                      {item.status}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

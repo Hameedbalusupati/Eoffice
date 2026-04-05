@@ -1,86 +1,68 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 
 export default function PerformancePresent() {
   const [className, setClassName] = useState("");
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
-
-  // =========================
-  // 📄 FETCH DATA (FIXED ✅)
-  // =========================
-  useEffect(() => {
-    if (!className) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      setLoading(true);
-
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/academics/performance-present",
-          {
-            params: {
-              faculty_id: user?.id,
-              class_name: className,
-            },
-          }
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-
-      if (!ignore) {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [className, user?.id]); // ✅ FIXED dependencies
+  // ✅ SAFE USER PARSE
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user data");
+  }
 
   // =========================
-  // 🔘 MANUAL FETCH BUTTON
+  // 📄 FETCH FUNCTION (CLEAN)
   // =========================
-  const handleFetch = async () => {
-    if (!className) return;
-
-    setLoading(true);
+  const fetchData = useCallback(async () => {
+    if (!className || !user?.id) return;
 
     try {
+      setLoading(true);
+      setError("");
+
       const res = await axios.get(
         "http://127.0.0.1:8000/academics/performance-present",
         {
           params: {
-            faculty_id: user?.id,
+            faculty_id: user.id,
             class_name: className,
           },
         }
       );
 
-      setData(res.data);
+      setData(res.data || []);
     } catch (err) {
       console.error(err);
+      setError("❌ Failed to fetch data");
+    } finally {
+      setLoading(false);
     }
+  }, [className, user?.id]);
 
-    setLoading(false);
-  };
+  // =========================
+  // AUTO FETCH
+  // =========================
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // =========================
+  // UI
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
       <h2>📊 Performance (Present)</h2>
 
-      {/* ================= FILTER ================= */}
+      {/* FILTER */}
       <div style={styles.filter}>
         <select
           value={className}
@@ -93,12 +75,19 @@ export default function PerformancePresent() {
           <option value="ECE-A">ECE-A</option>
         </select>
 
-        <button onClick={handleFetch} style={styles.button}>
+        <button
+          onClick={fetchData}
+          style={styles.button}
+          disabled={!className}
+        >
           Show
         </button>
       </div>
 
-      {/* ================= TABLE ================= */}
+      {/* ERROR */}
+      {error && <p style={styles.error}>{error}</p>}
+
+      {/* TABLE */}
       {loading ? (
         <p>Loading...</p>
       ) : data.length === 0 ? (
@@ -120,25 +109,31 @@ export default function PerformancePresent() {
           </thead>
 
           <tbody>
-            {data.map((item, index) => (
-              <tr key={index}>
-                <td>{item.roll_no}</td>
-                <td>{item.student_name}</td>
-                <td>{item.subject}</td>
-                <td>{item.internal}</td>
-                <td>{item.external}</td>
-                <td>{item.total}</td>
-                <td>{item.grade}</td>
-                <td>{item.attendance}%</td>
-                <td>
-                  {item.total >= 40 ? (
-                    <span style={{ color: "green" }}>✔ Pass</span>
-                  ) : (
-                    <span style={{ color: "red" }}>❌ Fail</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {data.map((item, index) => {
+              const total = Number(item.total) || 0;
+              const attendance = Number(item.attendance) || 0;
+
+              return (
+                <tr key={index}>
+                  <td>{item.roll_no || "-"}</td>
+                  <td>{item.student_name || "-"}</td>
+                  <td>{item.subject || "-"}</td>
+                  <td>{item.internal ?? "-"}</td>
+                  <td>{item.external ?? "-"}</td>
+                  <td>{total}</td>
+                  <td>{item.grade || "-"}</td>
+                  <td>{attendance}%</td>
+
+                  <td>
+                    {total >= 40 ? (
+                      <span style={styles.pass}>✔ Pass</span>
+                    ) : (
+                      <span style={styles.fail}>❌ Fail</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -150,7 +145,9 @@ export default function PerformancePresent() {
 // 🎨 STYLES
 // =========================
 const styles = {
-  container: { padding: "20px" },
+  container: {
+    padding: "20px",
+  },
 
   filter: {
     display: "flex",
@@ -160,6 +157,8 @@ const styles = {
 
   select: {
     padding: "8px",
+    borderRadius: "5px",
+    border: "1px solid #ccc",
   },
 
   button: {
@@ -167,11 +166,28 @@ const styles = {
     backgroundColor: "#2563eb",
     color: "#fff",
     border: "none",
+    borderRadius: "5px",
     cursor: "pointer",
   },
 
   table: {
     width: "100%",
     borderCollapse: "collapse",
+    marginTop: "10px",
+  },
+
+  pass: {
+    color: "green",
+    fontWeight: "bold",
+  },
+
+  fail: {
+    color: "red",
+    fontWeight: "bold",
+  },
+
+  error: {
+    color: "red",
+    marginBottom: "10px",
   },
 };

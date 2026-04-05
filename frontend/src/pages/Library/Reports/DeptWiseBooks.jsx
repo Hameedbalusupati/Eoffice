@@ -1,54 +1,59 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function DeptWiseBooks() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [openDept, setOpenDept] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/library/department-books"
-        );
+    try {
+      const res = await API.get("/library/department-books");
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const books =
+        res.data?.data || res.data?.books || res.data || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(Array.isArray(books) ? books : []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load books");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // =========================
-  // 🔍 GROUP + FILTER
+  // 🔍 GROUP + FILTER (SAFE)
   // =========================
   const groupedData = useMemo(() => {
-    const filtered = data.filter((book) =>
-      book.title.toLowerCase().includes(search.toLowerCase())
-    );
+    const filtered = data.filter((book) => {
+      const title = (book?.title || "").toLowerCase();
+      return title.includes(search.toLowerCase());
+    });
 
     const groups = {};
 
     filtered.forEach((book) => {
-      if (!groups[book.department]) {
-        groups[book.department] = [];
+      const dept = book?.department || "Others";
+
+      if (!groups[dept]) {
+        groups[dept] = [];
       }
-      groups[book.department].push(book);
+
+      groups[dept].push(book);
     });
 
     return groups;
@@ -65,7 +70,7 @@ export default function DeptWiseBooks() {
     <div style={styles.container}>
       <h2>📚 Dept Wise Books</h2>
 
-      {/* ================= SEARCH ================= */}
+      {/* SEARCH */}
       <input
         type="text"
         placeholder="Search book..."
@@ -74,56 +79,65 @@ export default function DeptWiseBooks() {
         style={styles.input}
       />
 
-      {/* ================= GROUP VIEW ================= */}
-      {Object.keys(groupedData).length === 0 ? (
-        <p>No data found</p>
-      ) : (
-        Object.entries(groupedData).map(([dept, books]) => (
-          <div key={dept} style={styles.card}>
-            {/* HEADER */}
-            <div
-              style={styles.header}
-              onClick={() => toggleDept(dept)}
-            >
-              <h3>{dept}</h3>
-              <span>{books.length} books</span>
-            </div>
+      {/* STATUS */}
+      {loading && <p>⏳ Loading...</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
-            {/* BOOK LIST */}
-            {openDept === dept && (
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Author</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
+      {/* GROUP VIEW */}
+      {!loading && !error && (
+        <>
+          {Object.keys(groupedData).length === 0 ? (
+            <p>No data found</p>
+          ) : (
+            Object.entries(groupedData).map(([dept, books]) => (
+              <div key={dept} style={styles.card}>
+                {/* HEADER */}
+                <div
+                  style={styles.header}
+                  onClick={() => toggleDept(dept)}
+                >
+                  <h3>{dept}</h3>
+                  <span>{books.length} books</span>
+                </div>
 
-                <tbody>
-                  {books.map((book) => (
-                    <tr key={book.id}>
-                      <td>{book.title}</td>
-                      <td>{book.author}</td>
+                {/* BOOK LIST */}
+                {openDept === dept && (
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Title</th>
+                        <th>Author</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
 
-                      <td>
-                        <StatusIcon status={book.available} />
-                        <span style={{ marginLeft: "6px" }}>
-                          {book.available ? "Available" : "Issued"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        ))
+                    <tbody>
+                      {books.map((book) => (
+                        <tr key={book?.id || Math.random()}>
+                          <td>{book?.title || "—"}</td>
+                          <td>{book?.author || "—"}</td>
+
+                          <td>
+                            <StatusIcon status={book?.available} />
+                            <span style={{ marginLeft: "6px" }}>
+                              {book?.available
+                                ? "Available"
+                                : "Issued"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            ))
+          )}
+        </>
       )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -157,5 +171,9 @@ const styles = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
+  },
+
+  error: {
+    color: "red",
   },
 };

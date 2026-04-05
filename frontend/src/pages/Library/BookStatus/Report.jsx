@@ -1,47 +1,47 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function BookStatusReports() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/library/book-status"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchBooks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/library/book-status");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // =========================
-  // 🔍 FILTER LOGIC
+  // 🔁 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchBooks();
+  }, [fetchBooks]);
+
+  // =========================
+  // 🔍 FILTER LOGIC (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     return data.filter((book) => {
       const matchesSearch =
-        book.title.toLowerCase().includes(search.toLowerCase()) ||
-        book.author.toLowerCase().includes(search.toLowerCase());
+        (book.title || "")
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        (book.author || "")
+          .toLowerCase()
+          .includes(search.toLowerCase());
 
       const matchesStatus =
         statusFilter === "" ||
@@ -52,6 +52,9 @@ export default function BookStatusReports() {
     });
   }, [data, search, statusFilter]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>📚 Book Status Reports</h2>
@@ -78,50 +81,55 @@ export default function BookStatusReports() {
       </div>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Author</th>
-            <th>Category</th>
-            <th>Status</th>
-            <th>Issued Date</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading records...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No records found
-              </td>
+              <th>Title</th>
+              <th>Author</th>
+              <th>Category</th>
+              <th>Status</th>
+              <th>Issued Date</th>
             </tr>
-          ) : (
-            filteredData.map((book) => (
-              <tr key={book.id}>
-                <td>{book.title}</td>
-                <td>{book.author}</td>
-                <td>{book.category}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={book.available} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {book.available ? "Available" : "Issued"}
-                  </span>
-                </td>
-
-                <td>
-                  {book.available ? "-" : book.issued_date || "N/A"}
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No records found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((book) => (
+                <tr key={book.id}>
+                  <td>{book.title || "—"}</td>
+                  <td>{book.author || "—"}</td>
+                  <td>{book.category || "—"}</td>
+
+                  <td>
+                    <StatusIcon status={book.available} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {book.available ? "Available" : "Issued"}
+                    </span>
+                  </td>
+
+                  <td>
+                    {book.available
+                      ? "-"
+                      : book.issued_date || "N/A"}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

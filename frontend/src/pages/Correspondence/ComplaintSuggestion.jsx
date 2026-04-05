@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-import StatusIcon from "../../../components/StatusIcon";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
+import StatusIcon from "../../components/StatusIcon";
 
 export default function ComplaintSuggestion() {
   const [form, setForm] = useState({
@@ -11,47 +11,50 @@ export default function ComplaintSuggestion() {
 
   const [data, setData] = useState([]);
   const [statusMsg, setStatusMsg] = useState("");
+  const [isError, setIsError] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ Safe user parsing
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  })();
+
+  // =========================
+  // 📄 FETCH HISTORY (FIXED)
+  // =========================
+  const fetchComplaints = useCallback(async () => {
+    if (!user?.id) return;
+
+    setLoading(true);
+    try {
+      const res = await API.get(
+        `/correspondence/complaints/${user.id}`
+      );
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  // =========================
+  // 🔁 USE EFFECT (FIXED)
+  // =========================
+  useEffect(() => {
+    fetchComplaints();
+  }, [fetchComplaints]);
 
   // =========================
   // 🔄 HANDLE INPUT
   // =========================
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
-
-  // =========================
-  // 📄 FETCH HISTORY
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/correspondence/complaints/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
 
   // =========================
   // 🚀 SUBMIT
@@ -59,51 +62,72 @@ export default function ComplaintSuggestion() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!form.title || !form.message) {
+      setIsError(true);
+      setStatusMsg("❌ All fields are required");
+      return;
+    }
+
+    if (!user?.id) {
+      setIsError(true);
+      setStatusMsg("❌ User not logged in");
+      return;
+    }
+
     try {
-      const description = `
-Type: ${form.type}
-Title: ${form.title}
+      const description = `Type: ${form.type}, Title: ${form.title}, Message: ${form.message}`;
 
-Message:
-${form.message}
-      `;
+      await API.post("/correspondence/complaint", {
+        user_id: user.id,
+        type: form.type,
+        title: form.title,
+        message: form.message,
+        description,
+      });
 
-      await axios.post(
-        "http://127.0.0.1:8000/correspondence/complaint",
-        {
-          user_id: user?.id,
-          type: form.type,
-          title: form.title,
-          message: form.message,
-          description: description,
-        }
-      );
-
+      setIsError(false);
       setStatusMsg("📩 Submitted successfully!");
 
+      // reset form
       setForm({
         type: "complaint",
         title: "",
         message: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/correspondence/complaints/${user.id}`
-      );
-      setData(res.data);
+      // refresh
+      fetchComplaints();
 
     } catch (err) {
-      console.error(err);
-      setStatusMsg("❌ Failed to submit");
+      console.error("Submit error:", err);
+
+      const errorMsg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "❌ Failed to submit";
+
+      setIsError(true);
+      setStatusMsg(errorMsg);
     }
   };
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>📩 Complaint / Suggestion</h2>
 
-      {statusMsg && <p style={styles.message}>{statusMsg}</p>}
+      {statusMsg && (
+        <p
+          style={{
+            ...styles.message,
+            color: isError ? "red" : "green",
+          }}
+        >
+          {statusMsg}
+        </p>
+      )}
 
       {/* ================= FORM ================= */}
       <form onSubmit={handleSubmit} style={styles.form}>
@@ -142,48 +166,48 @@ ${form.message}
       </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Type</th>
-            <th>Title</th>
-            <th>Message</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading records...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No records found
-              </td>
+              <th>Type</th>
+              <th>Title</th>
+              <th>Message</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => (
-              <tr key={item.id}>
-                <td>{item.type}</td>
-                <td>{item.title}</td>
+          </thead>
 
-                <td style={styles.desc}>
-                  {item.message}
-                </td>
-
-                <td>
-                  <StatusIcon status={item.status === "resolved"} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {item.status}
-                  </span>
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No records found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              data.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.type}</td>
+                  <td>{item.title}</td>
+                  <td style={styles.desc}>{item.message}</td>
+
+                  <td>
+                    <StatusIcon status={item.status === "resolved"} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {item.status}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -217,8 +241,8 @@ const styles = {
     backgroundColor: "#ef4444",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {

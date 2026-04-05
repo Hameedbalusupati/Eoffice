@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
-import StatusIcon from "../../../components/StatusIcon"; // ✅ FIXED PATH
+import API from "../../../services/api"; // ✅ FIXED
+import StatusIcon from "../../../components/StatusIcon";
 
 export default function Report() {
   const [data, setData] = useState([]);
@@ -11,16 +11,19 @@ export default function Report() {
   });
 
   // ✅ SAFE USER FETCH
-  const user = JSON.parse(localStorage.getItem("user") || "null");
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user in localStorage");
+  }
 
   useEffect(() => {
-    if (!user?.id) return; // ✅ prevent crash
+    if (!user?.id) return;
 
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/faculty/${user.id}`
-        );
+        const res = await API.get(`/academics/faculty/${user.id}`);
 
         const records = res.data || [];
 
@@ -42,6 +45,11 @@ export default function Report() {
 
     fetchData();
   }, [user?.id]);
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>

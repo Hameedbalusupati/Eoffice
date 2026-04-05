@@ -1,59 +1,61 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
 
 export default function InternalAnalysis() {
   const [data, setData] = useState([]);
   const [subject, setSubject] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
+  const fetchAnalysis = useCallback(async () => {
     if (!subject) return;
 
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/examination/internal/analysis/${subject}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+    setLoading(true);
+    try {
+      const res = await API.get(
+        `/examination/internal/analysis/${subject}`
+      );
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [subject]);
 
   // =========================
-  // 📊 ANALYSIS CALCULATION
+  // 🔁 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchAnalysis();
+  }, [fetchAnalysis]);
+
+  // =========================
+  // 📊 ANALYSIS CALCULATION (SAFE)
   // =========================
   const stats = useMemo(() => {
     if (!data.length)
       return { pass: 0, fail: 0, percent: 0, avg: 0 };
 
-    const pass = data.filter((s) => s.marks >= 40).length;
+    const pass = data.filter((s) => (s.marks ?? 0) >= 40).length;
     const fail = data.length - pass;
 
     const percent = ((pass / data.length) * 100).toFixed(2);
 
     const avg =
       (
-        data.reduce((sum, s) => sum + s.marks, 0) / data.length
+        data.reduce((sum, s) => sum + (s.marks ?? 0), 0) /
+        data.length
       ).toFixed(2);
 
     return { pass, fail, percent, avg };
   }, [data]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>📊 Internal Exam Analysis</h2>
@@ -68,14 +70,16 @@ export default function InternalAnalysis() {
       />
 
       {/* ================= STATS ================= */}
-      {data.length > 0 && (
+      {loading ? (
+        <p>Loading analysis...</p>
+      ) : data.length > 0 ? (
         <div style={styles.stats}>
           <p>✅ Pass: {stats.pass}</p>
           <p>❌ Fail: {stats.fail}</p>
           <p>📈 Pass %: {stats.percent}%</p>
           <p>📊 Avg Marks: {stats.avg}</p>
         </div>
-      )}
+      ) : null}
 
       {/* ================= TABLE ================= */}
       <table style={styles.table}>
@@ -89,21 +93,27 @@ export default function InternalAnalysis() {
         </thead>
 
         <tbody>
-          {data.length === 0 ? (
+          {!subject ? (
             <tr>
               <td colSpan="4" style={styles.noData}>
                 Enter subject to view analysis
               </td>
             </tr>
+          ) : data.length === 0 ? (
+            <tr>
+              <td colSpan="4" style={styles.noData}>
+                No data found
+              </td>
+            </tr>
           ) : (
             data.map((student) => (
               <tr key={student.id}>
-                <td>{student.roll_no}</td>
-                <td>{student.name}</td>
-                <td>{student.marks}</td>
+                <td>{student.roll_no || "—"}</td>
+                <td>{student.name || "—"}</td>
+                <td>{student.marks ?? "—"}</td>
 
                 <td>
-                  {student.marks >= 40 ? (
+                  {(student.marks ?? 0) >= 40 ? (
                     <span style={{ color: "green" }}>Pass</span>
                   ) : (
                     <span style={{ color: "red" }}>Fail</span>
@@ -117,7 +127,6 @@ export default function InternalAnalysis() {
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

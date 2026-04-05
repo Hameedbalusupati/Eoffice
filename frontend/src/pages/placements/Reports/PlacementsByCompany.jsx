@@ -1,53 +1,58 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 
 export default function PlacementsByCompanies() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [openCompany, setOpenCompany] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/placements/all"
-        );
+    try {
+      const res = await API.get("/placements/all");
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const items =
+        res.data?.data || res.data?.placements || res.data || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(Array.isArray(items) ? items : []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load placements");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // =========================
-  // 🔍 GROUP + FILTER
+  // 🔍 GROUP + FILTER (SAFE)
   // =========================
   const groupedData = useMemo(() => {
-    const filtered = data.filter((item) =>
-      item.company.toLowerCase().includes(search.toLowerCase())
-    );
+    const filtered = data.filter((item) => {
+      const company = (item?.company || "").toLowerCase();
+      return company.includes(search.toLowerCase());
+    });
 
     const groups = {};
 
     filtered.forEach((item) => {
-      if (!groups[item.company]) {
-        groups[item.company] = [];
+      const company = item?.company || "Others";
+
+      if (!groups[company]) {
+        groups[company] = [];
       }
-      groups[item.company].push(item);
+
+      groups[company].push(item);
     });
 
     return groups;
@@ -64,7 +69,7 @@ export default function PlacementsByCompanies() {
     <div style={styles.container}>
       <h2>🏢 Placements by Companies</h2>
 
-      {/* ================= SEARCH ================= */}
+      {/* SEARCH */}
       <input
         type="text"
         placeholder="Search company..."
@@ -73,52 +78,64 @@ export default function PlacementsByCompanies() {
         style={styles.input}
       />
 
-      {/* ================= GROUP VIEW ================= */}
-      {Object.keys(groupedData).length === 0 ? (
-        <p>No data found</p>
-      ) : (
-        Object.entries(groupedData).map(([company, students]) => (
-          <div key={company} style={styles.card}>
-            {/* HEADER */}
-            <div
-              style={styles.header}
-              onClick={() => toggleCompany(company)}
-            >
-              <h3>{company}</h3>
-              <span>{students.length} students</span>
-            </div>
+      {/* STATUS */}
+      {loading && <p>⏳ Loading...</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
-            {/* DETAILS */}
-            {openCompany === company && (
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Student</th>
-                    <th>Role</th>
-                    <th>Package</th>
-                    <th>Year</th>
-                  </tr>
-                </thead>
+      {/* GROUP VIEW */}
+      {!loading && !error && (
+        <>
+          {Object.keys(groupedData).length === 0 ? (
+            <p>No data found</p>
+          ) : (
+            Object.entries(groupedData).map(([company, students]) => (
+              <div key={company} style={styles.card}>
+                {/* HEADER */}
+                <div
+                  style={styles.header}
+                  onClick={() => toggleCompany(company)}
+                >
+                  <h3>{company}</h3>
+                  <span>{students.length} students</span>
+                </div>
 
-                <tbody>
-                  {students.map((item) => (
-                    <tr key={item.id}>
-                      <td>{item.student_name}</td>
-                      <td>{item.role}</td>
-                      <td>{item.package} LPA</td>
-                      <td>{item.year}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        ))
+                {/* DETAILS */}
+                {openCompany === company && (
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Student</th>
+                        <th>Role</th>
+                        <th>Package</th>
+                        <th>Year</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {students.map((item) => (
+                        <tr key={item?.id || Math.random()}>
+                          <td>{item?.student_name || "—"}</td>
+                          <td>{item?.role || "—"}</td>
+                          <td>{item?.package ?? "—"} LPA</td>
+                          <td>{item?.year || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            ))
+          )}
+
+          {/* REFRESH BUTTON */}
+          <button onClick={fetchData} style={styles.button}>
+            Refresh
+          </button>
+        </>
       )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -152,5 +169,19 @@ const styles = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
+  },
+
+  button: {
+    marginTop: "15px",
+    padding: "8px 12px",
+    background: "#16a34a",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
+
+  error: {
+    color: "red",
   },
 };

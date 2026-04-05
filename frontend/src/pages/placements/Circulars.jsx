@@ -1,68 +1,69 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function PlacementsCirculars() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
-  // 📄 FETCH CIRCULARS
+  // 📄 FETCH CIRCULARS (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/placements/circulars"
-        );
+    try {
+      const res = await API.get("/placements/circulars");
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const circulars =
+        res.data?.data || res.data?.circulars || res.data || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(Array.isArray(circulars) ? circulars : []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load circulars");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // =========================
-  // 🔍 FILTER
+  // 🔍 FILTER (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     if (!search) return data;
 
     return data.filter((item) =>
-      item.title.toLowerCase().includes(search.toLowerCase())
+      (item?.title || "")
+        .toLowerCase()
+        .includes(search.toLowerCase())
     );
   }, [data, search]);
 
   // =========================
-  // 👁️ VIEW + MARK READ
+  // 👁️ VIEW + MARK READ (FIXED)
   // =========================
   const handleView = async (item) => {
     setSelected(item);
 
     try {
-      await axios.put(
-        `http://127.0.0.1:8000/placements/circular/read/${item.id}`
-      );
+      await API.put(`/placements/circular/read/${item?.id}`);
 
       setData((prev) =>
         prev.map((c) =>
-          c.id === item.id ? { ...c, read: true } : c
+          c?.id === item?.id ? { ...c, read: true } : c
         )
       );
     } catch (err) {
-      console.error(err);
+      console.error("Mark read error:", err);
     }
   };
 
@@ -70,7 +71,7 @@ export default function PlacementsCirculars() {
     <div style={styles.container}>
       <h2>📢 Placement Circulars</h2>
 
-      {/* ================= SEARCH ================= */}
+      {/* SEARCH */}
       <input
         type="text"
         placeholder="Search circular..."
@@ -79,55 +80,80 @@ export default function PlacementsCirculars() {
         style={styles.input}
       />
 
-      <div style={styles.layout}>
-        {/* ================= LIST ================= */}
-        <div style={styles.list}>
-          {filteredData.length === 0 ? (
-            <p>No circulars found</p>
-          ) : (
-            filteredData.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  ...styles.item,
-                  backgroundColor: item.read ? "#fff" : "#e0f2fe",
-                }}
-                onClick={() => handleView(item)}
-              >
-                <h4>{item.title}</h4>
-                <p style={styles.preview}>
-                  {item.message.slice(0, 40)}...
+      {/* STATUS */}
+      {loading && <p>⏳ Loading...</p>}
+      {error && <p style={styles.error}>{error}</p>}
+
+      {/* MAIN LAYOUT */}
+      {!loading && !error && (
+        <div style={styles.layout}>
+          {/* LIST */}
+          <div style={styles.list}>
+            {filteredData.length === 0 ? (
+              <p>No circulars found</p>
+            ) : (
+              filteredData.map((item) => (
+                <div
+                  key={item?.id || Math.random()}
+                  style={{
+                    ...styles.item,
+                    backgroundColor: item?.read
+                      ? "#fff"
+                      : "#e0f2fe",
+                  }}
+                  onClick={() => handleView(item)}
+                >
+                  <h4>{item?.title || "—"}</h4>
+
+                  <p style={styles.preview}>
+                    {(item?.message || "").slice(0, 40)}...
+                  </p>
+
+                  <div style={styles.meta}>
+                    <span>
+                      {item?.date
+                        ? new Date(item.date).toLocaleDateString()
+                        : "—"}
+                    </span>
+
+                    <StatusIcon status={item?.read} />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* DETAILS */}
+          <div style={styles.details}>
+            {selected ? (
+              <>
+                <h3>{selected?.title || "—"}</h3>
+
+                <p>
+                  <b>Date:</b>{" "}
+                  {selected?.date
+                    ? new Date(selected.date).toLocaleDateString()
+                    : "—"}
                 </p>
 
-                <div style={styles.meta}>
-                  <span>{item.date}</span>
-                  <StatusIcon status={item.read} />
+                <div style={styles.messageBox}>
+                  {selected?.message || "No content"}
                 </div>
-              </div>
-            ))
-          )}
+              </>
+            ) : (
+              <p>Select a circular to view</p>
+            )}
+          </div>
         </div>
+      )}
 
-        {/* ================= DETAILS ================= */}
-        <div style={styles.details}>
-          {selected ? (
-            <>
-              <h3>{selected.title}</h3>
-              <p><b>Date:</b> {selected.date}</p>
-
-              <div style={styles.messageBox}>
-                {selected.message}
-              </div>
-            </>
-          ) : (
-            <p>Select a circular to view</p>
-          )}
-        </div>
-      </div>
+      {/* REFRESH */}
+      <button onClick={fetchData} style={styles.button}>
+        Refresh
+      </button>
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -146,10 +172,12 @@ const styles = {
   layout: {
     display: "flex",
     gap: "20px",
+    flexWrap: "wrap",
   },
 
   list: {
     width: "35%",
+    minWidth: "250px",
     borderRight: "1px solid #ccc",
     paddingRight: "10px",
   },
@@ -182,5 +210,19 @@ const styles = {
     padding: "10px",
     backgroundColor: "#f9fafb",
     borderRadius: "5px",
+  },
+
+  button: {
+    marginTop: "15px",
+    padding: "8px 12px",
+    background: "#16a34a",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
+
+  error: {
+    color: "red",
   },
 };

@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 // COMPONENTS
 import Navbar from "./components/Navbar";
@@ -14,33 +14,61 @@ import Report from "./pages/Academics/Assignments/Report";
 // Placements
 import StudentPerformance from "./pages/placements/StudentPerformance";
 
+// =========================
 // 🔐 SAFE USER FUNCTION
+// =========================
 const getUser = () => {
   try {
-    return JSON.parse(localStorage.getItem("user"));
+    const user = JSON.parse(localStorage.getItem("user"));
+    return user || null;
   } catch {
     return null;
   }
 };
 
+// =========================
 // 🔐 PROTECTED ROUTE
+// =========================
 const ProtectedRoute = ({ children }) => {
   const user = getUser();
-  return user ? children : <Navigate to="/" />;
+
+  // check token properly
+  if (!user?.access_token && !user?.token) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
 };
 
+// =========================
+// 🚀 APP
+// =========================
 function App() {
+  const location = useLocation();
+  const user = getUser();
+
+  // hide navbar on login page
+  const hideNavbar = location.pathname === "/" && !user;
+
   return (
     <>
-      {/* ✅ Navbar always visible */}
-      <Navbar />
+      {/* ✅ Navbar (conditional) */}
+      {!hideNavbar && <Navbar />}
 
       <Routes>
+        {/* HOME (LOGIN) */}
+        <Route
+          path="/"
+          element={
+            user ? (
+              <Navigate to="/academics/manage" />
+            ) : (
+              <Dashboard />
+            )
+          }
+        />
 
-        {/* HOME (LOGIN / DASHBOARD) */}
-        <Route path="/" element={<Dashboard />} />
-
-        {/* ACADEMICS */}
+        {/* ================= ACADEMICS ================= */}
         <Route
           path="/academics/assign"
           element={
@@ -68,7 +96,7 @@ function App() {
           }
         />
 
-        {/* PLACEMENTS */}
+        {/* ================= PLACEMENTS ================= */}
         <Route
           path="/placements/student-performance"
           element={
@@ -78,9 +106,8 @@ function App() {
           }
         />
 
-        {/* DEFAULT */}
+        {/* ================= DEFAULT ================= */}
         <Route path="*" element={<Navigate to="/" />} />
-
       </Routes>
     </>
   );

@@ -5,7 +5,9 @@ export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ✅ Get user from localStorage safely
+  // =========================
+  // 🔐 SAFE USER
+  // =========================
   let user = null;
   try {
     user = JSON.parse(localStorage.getItem("user"));
@@ -13,55 +15,62 @@ export default function Navbar() {
     user = null;
   }
 
+  const isLoggedIn = user?.access_token || user?.token;
+
+  // =========================
+  // 🚪 LOGOUT
+  // =========================
   const handleLogout = () => {
     localStorage.removeItem("user");
-    navigate("/login");
+    navigate("/"); // ✅ FIXED
   };
 
+  // =========================
+  // 🎯 ACTIVE LINK (IMPROVED)
+  // =========================
   const isActive = (path) => {
-    return location.pathname === path ? "active-link" : "";
+    return location.pathname.startsWith(path) ? "active-link" : "";
   };
 
   return (
     <nav className="navbar">
-      {/* Logo */}
+      {/* LOGO */}
       <div className="navbar-logo">
         <h2>E-Office</h2>
       </div>
 
-      {/* Links */}
-      <ul className="navbar-links">
-        <li>
-          <Link to="/dashboard" className={isActive("/dashboard")}>
-            Dashboard
-          </Link>
-        </li>
+      {/* LINKS */}
+      {isLoggedIn && (
+        <ul className="navbar-links">
+          <li>
+            <Link to="/academics/manage" className={isActive("/academics")}>
+              Academics
+            </Link>
+          </li>
 
-        <li>
-          <Link to="/academics" className={isActive("/academics")}>
-            Academics
-          </Link>
-        </li>
+          <li>
+            <Link
+              to="/placements/student-performance"
+              className={isActive("/placements")}
+            >
+              Placements
+            </Link>
+          </li>
 
-        <li>
-          <Link to="/placements" className={isActive("/placements")}>
-            Placements
-          </Link>
-        </li>
+          <li>
+            <Link to="/library" className={isActive("/library")}>
+              Library
+            </Link>
+          </li>
+        </ul>
+      )}
 
-        <li>
-          <Link to="/library" className={isActive("/library")}>
-            Library
-          </Link>
-        </li>
-      </ul>
-
-      {/* Right */}
+      {/* RIGHT SIDE */}
       <div className="navbar-right">
-        {user ? (
+        {isLoggedIn ? (
           <>
             <span className="user-name">
-              👤 {user?.name || "Faculty"}
+              👤 {user?.name || user?.email || "User"}
             </span>
 
             <button className="logout-btn" onClick={handleLogout}>
@@ -71,7 +80,7 @@ export default function Navbar() {
         ) : (
           <button
             className="login-btn"
-            onClick={() => navigate("/login")}
+            onClick={() => navigate("/")}
           >
             Login
           </button>

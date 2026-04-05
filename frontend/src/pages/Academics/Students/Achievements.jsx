@@ -1,119 +1,134 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
-export default function ProjectReviews() {
+export default function StudentAchievements() {
   const [form, setForm] = useState({
-    project_title: "",
-    class_name: "",
-    reviewer: "",
-    rating: "",
-    feedback: "",
+    title: "",
+    category: "",
+    date: "",
+    description: "",
   });
 
   const [data, setData] = useState([]);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user data");
+  }
 
   // =========================
   // 🔄 HANDLE INPUT
   // =========================
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
   // =========================
-  // 📄 FETCH REVIEWS (FIXED)
+  // 📄 FETCH ACHIEVEMENTS
   // =========================
-  useEffect(() => {
+  const fetchAchievements = useCallback(async () => {
     if (!user?.id) return;
 
-    let ignore = false;
+    try {
+      setLoading(true);
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/project-reviews/${user.id}`
-        );
+      const res = await API.get(`/academics/faculty/${user.id}`);
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      // 👉 filter only achievements (stored as projects or achievements)
+      const achievements =
+        res.data?.filter(
+          (item) =>
+            item.activity_name === "projects" ||
+            item.activity_name === "achievements"
+        ) || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(achievements);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
 
+  useEffect(() => {
+    fetchAchievements();
+  }, [fetchAchievements]);
+
   // =========================
-  // 🚀 ADD REVIEW
+  // 🚀 ADD ACHIEVEMENT
   // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!user?.id) {
+      setMessage("❌ Please login first");
+      return;
+    }
+
+    if (!form.title || !form.category) {
+      setMessage("❌ Fill required fields");
+      return;
+    }
+
     try {
       const description = `
-Reviewer: ${form.reviewer}
-Rating: ${form.rating}
+Category: ${form.category}
+Date: ${form.date}
 
-Feedback:
-${form.feedback}
+Details:
+${form.description}
       `;
 
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
-        activity_name: "project_reviews",
-        subject: form.project_title,
-        class_name: form.class_name,
-        description: description,
+      await API.post("/academics/create", {
+        faculty_id: user.id,
+        activity_name: "achievements",
+        subject: form.title,
+        class_name: "N/A",
+        description,
         status: "completed",
       });
 
-      setMessage("📝 Review added successfully!");
+      setMessage("🏆 Achievement added successfully!");
 
       setForm({
-        project_title: "",
-        class_name: "",
-        reviewer: "",
-        rating: "",
-        feedback: "",
+        title: "",
+        category: "",
+        date: "",
+        description: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/project-reviews/${user.id}`
-      );
-      setData(res.data);
-
+      fetchAchievements(); // refresh
     } catch (err) {
       console.error(err);
-      setMessage("❌ Failed to add review");
+      setMessage("❌ Failed to add achievement");
     }
   };
 
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
+
   return (
     <div style={styles.container}>
-      <h2>📝 Project Reviews</h2>
+      <h2>🏆 Student Achievements</h2>
 
+      {/* MESSAGE */}
       {message && <p style={styles.message}>{message}</p>}
 
       {/* ================= FORM ================= */}
       <form onSubmit={handleSubmit} style={styles.form}>
         <input
           type="text"
-          name="project_title"
-          placeholder="Project Title"
-          value={form.project_title}
+          name="title"
+          placeholder="Achievement Title"
+          value={form.title}
           onChange={handleChange}
           required
           style={styles.input}
@@ -121,130 +136,113 @@ ${form.feedback}
 
         <input
           type="text"
-          name="class_name"
-          placeholder="Class"
-          value={form.class_name}
+          name="category"
+          placeholder="Category (Award, Certificate, etc.)"
+          value={form.category}
           onChange={handleChange}
           required
           style={styles.input}
         />
 
         <input
-          type="text"
-          name="reviewer"
-          placeholder="Reviewer Name"
-          value={form.reviewer}
+          type="date"
+          name="date"
+          value={form.date}
           onChange={handleChange}
-          required
           style={styles.input}
         />
-
-        <select
-          name="rating"
-          value={form.rating}
-          onChange={handleChange}
-          required
-          style={styles.input}
-        >
-          <option value="">Select Rating</option>
-          <option value="1">1 ⭐</option>
-          <option value="2">2 ⭐</option>
-          <option value="3">3 ⭐</option>
-          <option value="4">4 ⭐</option>
-          <option value="5">5 ⭐</option>
-        </select>
 
         <textarea
-          name="feedback"
-          placeholder="Feedback"
-          value={form.feedback}
+          name="description"
+          placeholder="Description"
+          value={form.description}
           onChange={handleChange}
-          required
           style={styles.textarea}
         />
 
         <button type="submit" style={styles.button}>
-          Add Review
+          Add Achievement
         </button>
       </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Project</th>
-            <th>Class</th>
-            <th>Description</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No reviews found
-              </td>
+              <th>Title</th>
+              <th>Description</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => (
-              <tr key={item.id}>
-                <td>{item.subject}</td>
-                <td>{item.class_name}</td>
+          </thead>
 
-                <td style={styles.desc}>
-                  {item.description}
-                </td>
-
-                <td>
-                  <StatusIcon
-                    status={item.status === "completed"}
-                  />
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="3" style={styles.noData}>
+                  No achievements found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              data.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.subject || "-"}</td>
+
+                  <td style={styles.desc}>
+                    {item.description || "-"}
+                  </td>
+
+                  <td>
+                    <StatusIcon status={true} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
 // =========================
 const styles = {
-  container: { padding: "20px" },
+  container: {
+    padding: "20px",
+  },
 
   form: {
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    maxWidth: "450px",
+    maxWidth: "400px",
     marginBottom: "20px",
   },
 
   input: {
     padding: "10px",
-    border: "1px solid #ccc",
     borderRadius: "5px",
+    border: "1px solid #ccc",
   },
 
   textarea: {
     padding: "10px",
-    border: "1px solid #ccc",
     borderRadius: "5px",
+    border: "1px solid #ccc",
     minHeight: "80px",
   },
 
   button: {
     padding: "10px",
-    backgroundColor: "#7c3aed",
+    backgroundColor: "#f59e0b",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {
@@ -260,6 +258,7 @@ const styles = {
   noData: {
     textAlign: "center",
     padding: "20px",
+    color: "#777",
   },
 
   message: {

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function UploadResources() {
@@ -13,17 +13,49 @@ export default function UploadResources() {
   const [file, setFile] = useState(null);
   const [data, setData] = useState([]);
   const [message, setMessage] = useState("");
+  const [isError, setIsError] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ Safe user parsing
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  })();
+
+  // =========================
+  // 📄 FETCH RESOURCES (FIXED)
+  // =========================
+  const fetchResources = useCallback(async () => {
+    if (!user?.id) return;
+
+    setLoading(true);
+    try {
+      const res = await API.get(
+        `/academics/upload-resources/${user.id}`
+      );
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]); // ✅ dependency added
+
+  // =========================
+  // 🔁 USE EFFECT (FIXED)
+  // =========================
+  useEffect(() => {
+    fetchResources();
+  }, [fetchResources]); // ✅ no warning now
 
   // =========================
   // 🔄 HANDLE INPUT
   // =========================
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
   // =========================
@@ -34,44 +66,27 @@ export default function UploadResources() {
   };
 
   // =========================
-  // 📄 FETCH RESOURCES
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/upload-resources/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
-
-  // =========================
   // 🚀 SUBMIT
   // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!user?.id) {
+      setIsError(true);
+      setMessage("❌ User not logged in");
+      return;
+    }
+
+    if (!form.title || !form.subject || !form.class_name) {
+      setIsError(true);
+      setMessage("❌ All required fields must be filled");
+      return;
+    }
+
     try {
       const formData = new FormData();
 
-      formData.append("faculty_id", user?.id);
+      formData.append("faculty_id", user.id);
       formData.append("title", form.title);
       formData.append("subject", form.subject);
       formData.append("class_name", form.class_name);
@@ -81,46 +96,59 @@ export default function UploadResources() {
         formData.append("file", file);
       }
 
-      await axios.post(
-        "http://127.0.0.1:8000/academics/upload-resource",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+      await API.post("/academics/upload-resource", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
 
-      setMessage("📁 Resource uploaded successfully!");
+      setIsError(false);
+      setMessage("✅ Resource uploaded successfully!");
 
+      // reset form
       setForm({
         title: "",
         subject: "",
         class_name: "",
         link: "",
       });
-
       setFile(null);
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/upload-resources/${user.id}`
-      );
-      setData(res.data);
+      // refresh
+      fetchResources();
 
     } catch (err) {
-      console.error(err);
-      setMessage("❌ Upload failed");
+      console.error("Upload error:", err);
+
+      const errorMsg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "❌ Upload failed";
+
+      setIsError(true);
+      setMessage(errorMsg);
     }
   };
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>📁 Upload Resources</h2>
 
-      {message && <p style={styles.message}>{message}</p>}
+      {message && (
+        <p
+          style={{
+            ...styles.message,
+            color: isError ? "red" : "green",
+          }}
+        >
+          {message}
+        </p>
+      )}
 
-      {/* ================= FORM ================= */}
+      {/* FORM */}
       <form onSubmit={handleSubmit} style={styles.form}>
         <input
           type="text"
@@ -155,7 +183,7 @@ export default function UploadResources() {
         <input
           type="url"
           name="link"
-          placeholder="Optional Link (Drive / YouTube)"
+          placeholder="Optional Link"
           value={form.link}
           onChange={handleChange}
           style={styles.input}
@@ -172,63 +200,64 @@ export default function UploadResources() {
         </button>
       </form>
 
-      {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Subject</th>
-            <th>Class</th>
-            <th>File</th>
-            <th>Link</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {/* TABLE */}
+      {loading ? (
+        <p>Loading resources...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="6" style={styles.noData}>
-                No resources uploaded
-              </td>
+              <th>Title</th>
+              <th>Subject</th>
+              <th>Class</th>
+              <th>File</th>
+              <th>Link</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => (
-              <tr key={item.id}>
-                <td>{item.title}</td>
-                <td>{item.subject}</td>
-                <td>{item.class_name}</td>
+          </thead>
 
-                <td>
-                  {item.file_url ? (
-                    <a href={item.file_url} target="_blank" rel="noreferrer">
-                      📄 View
-                    </a>
-                  ) : "—"}
-                </td>
-
-                <td>
-                  {item.link ? (
-                    <a href={item.link} target="_blank" rel="noreferrer">
-                      🔗 Open
-                    </a>
-                  ) : "—"}
-                </td>
-
-                <td>
-                  <StatusIcon
-                    status={item.status === "completed"}
-                  />
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="6" style={styles.noData}>
+                  No resources uploaded
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              data.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.title}</td>
+                  <td>{item.subject}</td>
+                  <td>{item.class_name}</td>
+
+                  <td>
+                    {item.file_url ? (
+                      <a href={item.file_url} target="_blank" rel="noreferrer">
+                        📄 View
+                      </a>
+                    ) : "—"}
+                  </td>
+
+                  <td>
+                    {item.link ? (
+                      <a href={item.link} target="_blank" rel="noreferrer">
+                        🔗 Open
+                      </a>
+                    ) : "—"}
+                  </td>
+
+                  <td>
+                    <StatusIcon status={item.status === "completed"} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -255,8 +284,8 @@ const styles = {
     backgroundColor: "#4f46e5",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {

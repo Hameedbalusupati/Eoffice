@@ -1,22 +1,26 @@
 import { useState } from "react";
-import axios from "axios";
+import API from "../../../services/api"; // ✅ FIX
 
 export default function LeisureTime() {
   const [form, setForm] = useState({
     date: "",
     time: "",
-    activity_type: "leisure", // 🔥 default
+    activity_type: "leisure",
     title: "",
     description: "",
   });
 
   const [message, setMessage] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER FETCH
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user in localStorage");
+  }
 
-  // =========================
   // 🔄 HANDLE INPUT
-  // =========================
   const handleChange = (e) => {
     setForm({
       ...form,
@@ -24,19 +28,22 @@ export default function LeisureTime() {
     });
   };
 
-  // =========================
   // 🚀 SUBMIT
-  // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // ❗ LOGIN CHECK
+    if (!user?.id) {
+      setMessage("❌ Please login first");
+      return;
+    }
+
     try {
-      // 🔥 Decide status based on activity type
+      // 🔥 WORK TYPE CHECK
       const isWork =
-        form.activity_type === "fdp" ||
-        form.activity_type === "research" ||
-        form.activity_type === "workshop" ||
-        form.activity_type === "seminar";
+        ["fdp", "research", "workshop", "seminar"].includes(
+          form.activity_type
+        );
 
       const status = isWork ? "completed" : "pending";
 
@@ -49,13 +56,13 @@ Title: ${form.title}
 Details: ${form.description}
       `;
 
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
+      await API.post("/academics/create", {
+        faculty_id: user.id,
         activity_name: "leisure_time",
         subject: form.title,
         class_name: "N/A",
         description: description,
-        status: status, // 🔥 dynamic
+        status: status,
       });
 
       setMessage(
@@ -72,10 +79,15 @@ Details: ${form.description}
         description: "",
       });
     } catch (error) {
-      console.error(error);
+      console.error("Submit error:", error);
       setMessage("❌ Failed to save data");
     }
   };
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -104,7 +116,7 @@ Details: ${form.description}
           style={styles.input}
         />
 
-        {/* 🔥 Activity Type */}
+        {/* Activity Type */}
         <select
           name="activity_type"
           value={form.activity_type}
@@ -146,10 +158,7 @@ Details: ${form.description}
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     padding: "20px",

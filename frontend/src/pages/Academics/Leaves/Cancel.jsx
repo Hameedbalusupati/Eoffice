@@ -1,72 +1,62 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function LeaveCancel() {
   const [data, setData] = useState([]);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user");
+  }
 
   // =========================
-  // 📄 FETCH USER LEAVES (FIXED)
+  // 📄 FETCH LEAVES (FIXED)
   // =========================
-  useEffect(() => {
+  const fetchLeaves = useCallback(async () => {
     if (!user?.id) return;
 
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/leaves/user/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
-
-  // =========================
-  // 🔄 REFRESH
-  // =========================
-  const refreshData = async () => {
     try {
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/leaves/user/${user.id}`
-      );
-      setData(res.data);
+      setLoading(true);
+      const res = await API.get(`/academics/leaves/user/${user.id}`);
+      setData(res.data || []);
     } catch (err) {
-      console.error(err);
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [user?.id]); // ✅ dependency added
 
   // =========================
-  // ❌ CANCEL LEAVE
+  // 🔄 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchLeaves();
+  }, [fetchLeaves]); // ✅ no warning now
+
+  // =========================
+  // ❌ CANCEL
   // =========================
   const handleCancel = async (id) => {
     try {
-      await axios.delete(
-        `http://127.0.0.1:8000/academics/leaves/${id}`
-      );
-
+      await API.delete(`/academics/leaves/${id}`);
       setMessage("❌ Leave canceled successfully");
-      refreshData();
+      fetchLeaves();
     } catch (err) {
       console.error(err);
       setMessage("❌ Failed to cancel leave");
     }
   };
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -74,60 +64,61 @@ export default function LeaveCancel() {
 
       {message && <p style={styles.message}>{message}</p>}
 
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>From</th>
-            <th>To</th>
-            <th>Reason</th>
-            <th>Status</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No leave records
-              </td>
+              <th>From</th>
+              <th>To</th>
+              <th>Reason</th>
+              <th>Status</th>
+              <th>Action</th>
             </tr>
-          ) : (
-            data.map((item) => (
-              <tr key={item.id}>
-                <td>{item.from_date}</td>
-                <td>{item.to_date}</td>
-                <td>{item.reason}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={item.status === "approved"} />
-                </td>
-
-                <td>
-                  {item.status === "pending" ? (
-                    <button
-                      onClick={() => handleCancel(item.id)}
-                      style={styles.cancelBtn}
-                    >
-                      Cancel
-                    </button>
-                  ) : (
-                    "Not Allowed"
-                  )}
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No leave records
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              data.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.from_date || "-"}</td>
+                  <td>{item.to_date || "-"}</td>
+                  <td>{item.reason || "-"}</td>
+
+                  <td>
+                    <StatusIcon status={item.status === "approved"} />
+                  </td>
+
+                  <td>
+                    {item.status === "pending" ? (
+                      <button
+                        onClick={() => handleCancel(item.id)}
+                        style={styles.cancelBtn}
+                      >
+                        Cancel
+                      </button>
+                    ) : (
+                      <span style={{ color: "#777" }}>Not Allowed</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     padding: "20px",
@@ -136,13 +127,15 @@ const styles = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
+    marginTop: "20px",
   },
 
   cancelBtn: {
-    padding: "5px 10px",
+    padding: "6px 12px",
     backgroundColor: "#ef4444",
     color: "#fff",
     border: "none",
+    borderRadius: "4px",
     cursor: "pointer",
   },
 

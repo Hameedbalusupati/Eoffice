@@ -1,124 +1,145 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
-export default function EmployeeSearch() {
+export default function EmployeeLeavesHistory() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
-  const [department, setDepartment] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // ✅ Safe user parsing
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  })();
 
   // =========================
-  // 📄 FETCH EMPLOYEES
+  // 📄 FETCH LEAVES
+  // =========================
+  const fetchLeaves = useCallback(async () => {
+    if (!user?.id) return;
+
+    setLoading(true);
+    try {
+      const res = await API.get(
+        `/employee/leaves/${user.id}`
+      );
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  // =========================
+  // 🔁 USE EFFECT
   // =========================
   useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/employee/list"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, []);
+    fetchLeaves();
+  }, [fetchLeaves]);
 
   // =========================
   // 🔍 FILTER LOGIC
   // =========================
   const filteredData = useMemo(() => {
-    return data.filter((emp) => {
-      const matchesSearch =
-        emp.name.toLowerCase().includes(search.toLowerCase()) ||
-        emp.email.toLowerCase().includes(search.toLowerCase());
+    let temp = data;
 
-      const matchesDept =
-        department === "" || emp.department === department;
+    if (search) {
+      temp = temp.filter((item) =>
+        (item.reason || "")
+          .toLowerCase()
+          .includes(search.toLowerCase())
+      );
+    }
 
-      return matchesSearch && matchesDept;
-    });
-  }, [data, search, department]);
+    if (statusFilter) {
+      temp = temp.filter(
+        (item) => item.status === statusFilter
+      );
+    }
 
+    return temp;
+  }, [data, search, statusFilter]);
+
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
-      <h2>🔍 Employee Search</h2>
+      <h2>📄 Employee Leave History</h2>
 
-      {/* ================= FILTERS ================= */}
-      <div style={styles.filters}>
+      {/* ================= FILTER ================= */}
+      <div style={styles.filter}>
         <input
           type="text"
-          placeholder="Search by name or email..."
+          placeholder="Search by reason..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={styles.input}
         />
 
         <select
-          value={department}
-          onChange={(e) => setDepartment(e.target.value)}
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
           style={styles.select}
         >
-          <option value="">All Departments</option>
-          <option value="CSE">CSE</option>
-          <option value="ECE">ECE</option>
-          <option value="EEE">EEE</option>
-          <option value="MECH">MECH</option>
+          <option value="">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
         </select>
       </div>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Department</th>
-            <th>Email</th>
-            <th>Phone</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading leave records...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No employees found
-              </td>
+              <th>From</th>
+              <th>To</th>
+              <th>Reason</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((emp) => (
-              <tr key={emp.id}>
-                <td>{emp.name}</td>
-                <td>{emp.department}</td>
-                <td>{emp.email}</td>
-                <td>{emp.phone}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={emp.active} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {emp.active ? "Active" : "Inactive"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No leave records found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.from_date || "—"}</td>
+                  <td>{item.to_date || "—"}</td>
+                  <td>{item.reason || "—"}</td>
+
+                  <td>
+                    <StatusIcon
+                      status={item.status === "approved"}
+                    />
+                    <span style={{ marginLeft: "6px" }}>
+                      {item.status}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -126,7 +147,7 @@ export default function EmployeeSearch() {
 const styles = {
   container: { padding: "20px" },
 
-  filters: {
+  filter: {
     display: "flex",
     gap: "10px",
     marginBottom: "15px",

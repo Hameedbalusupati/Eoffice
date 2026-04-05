@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import API from "../../services/api"; // ✅ use your API
 
 export default function Register() {
   const navigate = useNavigate();
@@ -14,6 +14,8 @@ export default function Register() {
   });
 
   const [message, setMessage] = useState("");
+  const [isError, setIsError] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // =========================
   // 🔄 HANDLE INPUT
@@ -31,41 +33,77 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // 🔐 password validation
+    // ✅ validations
+    if (!form.name || !form.email || !form.password) {
+      setIsError(true);
+      setMessage("❌ All fields are required");
+      return;
+    }
+
+    if (form.password.length < 6) {
+      setIsError(true);
+      setMessage("❌ Password must be at least 6 characters");
+      return;
+    }
+
     if (form.password !== form.confirmPassword) {
+      setIsError(true);
       setMessage("❌ Passwords do not match");
       return;
     }
 
-    try {
-      await axios.post(
-        "http://127.0.0.1:8000/auth/register",
-        {
-          name: form.name,
-          email: form.email,
-          password: form.password,
-          role: form.role,
-        }
-      );
+    setLoading(true);
+    setMessage("");
 
+    try {
+      await API.post("/auth/register", {
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        role: form.role,
+      });
+
+      setIsError(false);
       setMessage("✅ Registration successful! Redirecting...");
 
+      // redirect after delay
       setTimeout(() => {
         navigate("/login");
       }, 1500);
 
     } catch (err) {
-      console.error(err);
-      setMessage("❌ Registration failed (email may exist)");
+      console.error("Register error:", err);
+
+      const errorMsg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "❌ Registration failed (email may exist)";
+
+      setIsError(true);
+      setMessage(errorMsg);
+    } finally {
+      setLoading(false);
     }
   };
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <div style={styles.card}>
         <h2>📝 Register</h2>
 
-        {message && <p style={styles.message}>{message}</p>}
+        {message && (
+          <p
+            style={{
+              ...styles.message,
+              color: isError ? "red" : "green",
+            }}
+          >
+            {message}
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <input
@@ -118,8 +156,16 @@ export default function Register() {
             <option value="student">Student</option>
           </select>
 
-          <button type="submit" style={styles.button}>
-            Register
+          <button
+            type="submit"
+            style={{
+              ...styles.button,
+              opacity: loading ? 0.7 : 1,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+            disabled={loading}
+          >
+            {loading ? "Registering..." : "Register"}
           </button>
         </form>
 
@@ -136,7 +182,6 @@ export default function Register() {
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -162,7 +207,7 @@ const styles = {
   form: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "12px",
     marginTop: "15px",
   },
 
@@ -177,13 +222,12 @@ const styles = {
     backgroundColor: "#16a34a",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
   },
 
   message: {
     marginTop: "10px",
-    color: "red",
+    fontWeight: "bold",
   },
 
   link: {

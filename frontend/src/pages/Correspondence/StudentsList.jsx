@@ -1,51 +1,56 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function StudentList() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH STUDENTS
+  // 📄 FETCH STUDENTS (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/academics/students"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchStudents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/academics/students");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // =========================
-  // 🔍 SEARCH FILTER
+  // 🔁 USE EFFECT (FIXED)
+  // =========================
+  useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
+
+  // =========================
+  // 🔍 SEARCH FILTER (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     if (!search) return data;
 
     return data.filter((student) =>
-      student.name.toLowerCase().includes(search.toLowerCase()) ||
-      student.roll_no.toLowerCase().includes(search.toLowerCase()) ||
-      student.class_name.toLowerCase().includes(search.toLowerCase())
+      (student.name || "")
+        .toLowerCase()
+        .includes(search.toLowerCase()) ||
+      (student.roll_no || "")
+        .toLowerCase()
+        .includes(search.toLowerCase()) ||
+      (student.class_name || "")
+        .toLowerCase()
+        .includes(search.toLowerCase())
     );
   }, [data, search]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>👨‍🎓 Student List</h2>
@@ -60,49 +65,52 @@ export default function StudentList() {
       />
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Roll No</th>
-            <th>Class</th>
-            <th>Branch</th>
-            <th>Email</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading students...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="6" style={styles.noData}>
-                No students found
-              </td>
+              <th>Name</th>
+              <th>Roll No</th>
+              <th>Class</th>
+              <th>Branch</th>
+              <th>Email</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((student) => (
-              <tr key={student.id}>
-                <td>{student.name}</td>
-                <td>{student.roll_no}</td>
-                <td>{student.class_name}</td>
-                <td>{student.branch}</td>
-                <td>{student.email}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={student.active} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {student.active ? "Active" : "Inactive"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="6" style={styles.noData}>
+                  No students found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((student) => (
+                <tr key={student.id}>
+                  <td>{student.name || "—"}</td>
+                  <td>{student.roll_no || "—"}</td>
+                  <td>{student.class_name || "—"}</td>
+                  <td>{student.branch || "—"}</td>
+                  <td>{student.email || "—"}</td>
+
+                  <td>
+                    <StatusIcon status={student.active} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {student.active ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

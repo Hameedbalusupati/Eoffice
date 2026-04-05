@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import API from "../../../services/api"; // ✅ FIX
 
 export default function DayClassWork() {
   const [form, setForm] = useState({
@@ -13,11 +13,15 @@ export default function DayClassWork() {
 
   const [message, setMessage] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER FETCH
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user in localStorage");
+  }
 
-  // =========================
   // 🔄 HANDLE INPUT
-  // =========================
   const handleChange = (e) => {
     setForm({
       ...form,
@@ -25,11 +29,15 @@ export default function DayClassWork() {
     });
   };
 
-  // =========================
   // 🚀 SUBMIT
-  // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // ❗ LOGIN CHECK
+    if (!user?.id) {
+      setMessage("❌ Please login first");
+      return;
+    }
 
     try {
       const description = `
@@ -40,8 +48,8 @@ Hours Taken: ${form.hours_taken}
 Details: ${form.description}
       `;
 
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
+      await API.post("/academics/create", {
+        faculty_id: user.id,
         activity_name: "teaching_plan",
         subject: form.subject,
         class_name: form.class_name,
@@ -59,10 +67,15 @@ Details: ${form.description}
         description: "",
       });
     } catch (error) {
-      console.error(error);
+      console.error("Submit error:", error);
       setMessage("❌ Failed to submit class work");
     }
   };
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -136,10 +149,7 @@ Details: ${form.description}
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     padding: "20px",

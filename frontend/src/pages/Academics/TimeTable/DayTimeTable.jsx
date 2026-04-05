@@ -1,160 +1,218 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../../services/api";
 
-export default function PerformancePast() {
-  const [className, setClassName] = useState("");
-  const [semester, setSemester] = useState("");
+export default function DayTimeTable() {
+  const [form, setForm] = useState({
+    day: "",
+    subject: "",
+    class_name: "",
+    start_time: "",
+    end_time: "",
+  });
+
   const [data, setData] = useState([]);
+  const [selectedDay, setSelectedDay] = useState("");
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
-
-  // =========================
-  // 📄 FETCH DATA (SAFE ✅)
-  // =========================
-  useEffect(() => {
-    if (!className || !semester) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      setLoading(true);
-
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/academics/performance-past",
-          {
-            params: {
-              faculty_id: user?.id,
-              class_name: className,
-              semester: semester,
-            },
-          }
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-
-      if (!ignore) {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [className, semester, user?.id]);
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user");
+  }
 
   // =========================
-  // 🔘 MANUAL FETCH
+  // 🔄 HANDLE INPUT
   // =========================
-  const handleFetch = async () => {
-    if (!className || !semester) return;
+  const handleChange = (e) => {
+    setForm((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
+  };
 
-    setLoading(true);
+  // =========================
+  // 📄 FETCH TIMETABLE
+  // =========================
+  const fetchData = useCallback(async () => {
+    if (!user?.id) return;
 
     try {
-      const res = await axios.get(
-        "http://127.0.0.1:8000/academics/performance-past",
-        {
-          params: {
-            faculty_id: user?.id,
-            class_name: className,
-            semester: semester,
-          },
-        }
-      );
+      setLoading(true);
 
-      setData(res.data);
+      const res = await API.get(`/academics/timetable/${user.id}`);
+
+      setData(res.data || []);
     } catch (err) {
       console.error(err);
+      setMessage("❌ Failed to load timetable");
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // =========================
+  // 🚀 ADD TIMETABLE
+  // =========================
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!user?.id) {
+      setMessage("❌ Please login first");
+      return;
     }
 
-    setLoading(false);
+    try {
+      await API.post("/academics/timetable", {
+        faculty_id: user.id,
+        ...form,
+      });
+
+      setMessage("✅ Timetable added successfully!");
+
+      setForm({
+        day: "",
+        subject: "",
+        class_name: "",
+        start_time: "",
+        end_time: "",
+      });
+
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      setMessage("❌ Failed to add timetable");
+    }
   };
+
+  // =========================
+  // 📊 FILTER
+  // =========================
+  const filteredData = selectedDay
+    ? data.filter((item) => item.day === selectedDay)
+    : data;
+
+  // =========================
+  // UI
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
-      <h2>📊 Performance (Past)</h2>
+      <h2>📅 Day Timetable</h2>
 
-      {/* ================= FILTER ================= */}
-      <div style={styles.filter}>
+      {message && <p style={styles.message}>{message}</p>}
+
+      {/* FORM */}
+      <form onSubmit={handleSubmit} style={styles.form}>
         <select
-          value={className}
-          onChange={(e) => setClassName(e.target.value)}
-          style={styles.select}
+          name="day"
+          value={form.day}
+          onChange={handleChange}
+          required
+          style={styles.input}
         >
-          <option value="">Select Class</option>
-          <option value="CSE-A">CSE-A</option>
-          <option value="CSE-B">CSE-B</option>
-          <option value="ECE-A">ECE-A</option>
+          <option value="">Select Day</option>
+          <option>Monday</option>
+          <option>Tuesday</option>
+          <option>Wednesday</option>
+          <option>Thursday</option>
+          <option>Friday</option>
+          <option>Saturday</option>
         </select>
 
-        <select
-          value={semester}
-          onChange={(e) => setSemester(e.target.value)}
-          style={styles.select}
-        >
-          <option value="">Select Semester</option>
-          <option value="1-1">1-1</option>
-          <option value="1-2">1-2</option>
-          <option value="2-1">2-1</option>
-          <option value="2-2">2-2</option>
-          <option value="3-1">3-1</option>
-          <option value="3-2">3-2</option>
-          <option value="4-1">4-1</option>
-          <option value="4-2">4-2</option>
-        </select>
+        <input
+          type="text"
+          name="subject"
+          placeholder="Subject"
+          value={form.subject}
+          onChange={handleChange}
+          required
+          style={styles.input}
+        />
 
-        <button onClick={handleFetch} style={styles.button}>
-          Show
+        <input
+          type="text"
+          name="class_name"
+          placeholder="Class"
+          value={form.class_name}
+          onChange={handleChange}
+          required
+          style={styles.input}
+        />
+
+        <input
+          type="time"
+          name="start_time"
+          value={form.start_time}
+          onChange={handleChange}
+          required
+          style={styles.input}
+        />
+
+        <input
+          type="time"
+          name="end_time"
+          value={form.end_time}
+          onChange={handleChange}
+          required
+          style={styles.input}
+        />
+
+        <button type="submit" style={styles.button}>
+          Add Timetable
         </button>
+      </form>
+
+      {/* FILTER */}
+      <div style={{ marginBottom: "15px" }}>
+        <select
+          value={selectedDay}
+          onChange={(e) => setSelectedDay(e.target.value)}
+          style={styles.input}
+        >
+          <option value="">All Days</option>
+          <option>Monday</option>
+          <option>Tuesday</option>
+          <option>Wednesday</option>
+          <option>Thursday</option>
+          <option>Friday</option>
+          <option>Saturday</option>
+        </select>
       </div>
 
-      {/* ================= TABLE ================= */}
+      {/* TABLE */}
       {loading ? (
         <p>Loading...</p>
-      ) : data.length === 0 ? (
-        <p>No past records found</p>
+      ) : filteredData.length === 0 ? (
+        <p>No timetable found</p>
       ) : (
         <table style={styles.table}>
           <thead>
             <tr>
-              <th>Roll No</th>
-              <th>Name</th>
+              <th>Day</th>
               <th>Subject</th>
-              <th>Internal</th>
-              <th>External</th>
-              <th>Total</th>
-              <th>Grade</th>
-              <th>Attendance %</th>
-              <th>Status</th>
+              <th>Class</th>
+              <th>Time</th>
             </tr>
           </thead>
 
           <tbody>
-            {data.map((item, index) => (
+            {filteredData.map((item, index) => (
               <tr key={index}>
-                <td>{item.roll_no}</td>
-                <td>{item.student_name}</td>
-                <td>{item.subject}</td>
-                <td>{item.internal}</td>
-                <td>{item.external}</td>
-                <td>{item.total}</td>
-                <td>{item.grade}</td>
-                <td>{item.attendance}%</td>
+                <td>{item.day || "-"}</td>
+                <td>{item.subject || "-"}</td>
+                <td>{item.class_name || "-"}</td>
                 <td>
-                  {item.total >= 40 ? (
-                    <span style={{ color: "green" }}>✔ Pass</span>
-                  ) : (
-                    <span style={{ color: "red" }}>❌ Fail</span>
-                  )}
+                  {item.start_time} - {item.end_time}
                 </td>
               </tr>
             ))}
@@ -165,33 +223,43 @@ export default function PerformancePast() {
   );
 }
 
-
 // =========================
 // 🎨 STYLES
 // =========================
 const styles = {
   container: { padding: "20px" },
 
-  filter: {
+  form: {
     display: "flex",
+    flexDirection: "column",
     gap: "10px",
+    maxWidth: "400px",
     marginBottom: "20px",
   },
 
-  select: {
-    padding: "8px",
+  input: {
+    padding: "10px",
+    borderRadius: "5px",
+    border: "1px solid #ccc",
   },
 
   button: {
-    padding: "8px 15px",
-    backgroundColor: "#059669",
+    padding: "10px",
+    backgroundColor: "#7c3aed",
     color: "#fff",
     border: "none",
+    borderRadius: "5px",
     cursor: "pointer",
   },
 
   table: {
     width: "100%",
     borderCollapse: "collapse",
+    marginTop: "10px",
+  },
+
+  message: {
+    marginBottom: "10px",
+    fontWeight: "bold",
   },
 };

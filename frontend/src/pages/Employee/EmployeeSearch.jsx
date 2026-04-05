@@ -1,47 +1,47 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function EmployeeSearch() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH EMPLOYEES
+  // 📄 FETCH EMPLOYEES (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/employee/list"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchEmployees = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/employee/list");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // =========================
-  // 🔍 FILTER LOGIC
+  // 🔁 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchEmployees();
+  }, [fetchEmployees]);
+
+  // =========================
+  // 🔍 FILTER LOGIC (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     return data.filter((emp) => {
       const matchesSearch =
-        emp.name.toLowerCase().includes(search.toLowerCase()) ||
-        emp.email.toLowerCase().includes(search.toLowerCase());
+        (emp.name || "")
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        (emp.email || "")
+          .toLowerCase()
+          .includes(search.toLowerCase());
 
       const matchesDept =
         department === "" || emp.department === department;
@@ -50,6 +50,9 @@ export default function EmployeeSearch() {
     });
   }, [data, search, department]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>🔍 Employee Search</h2>
@@ -78,47 +81,50 @@ export default function EmployeeSearch() {
       </div>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Department</th>
-            <th>Email</th>
-            <th>Phone</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading employees...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No employees found
-              </td>
+              <th>Name</th>
+              <th>Department</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((emp) => (
-              <tr key={emp.id}>
-                <td>{emp.name}</td>
-                <td>{emp.department}</td>
-                <td>{emp.email}</td>
-                <td>{emp.phone}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={emp.active} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {emp.active ? "Active" : "Inactive"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No employees found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((emp) => (
+                <tr key={emp.id}>
+                  <td>{emp.name || "—"}</td>
+                  <td>{emp.department || "—"}</td>
+                  <td>{emp.email || "—"}</td>
+                  <td>{emp.phone || "—"}</td>
+
+                  <td>
+                    <StatusIcon status={emp.active} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {emp.active ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

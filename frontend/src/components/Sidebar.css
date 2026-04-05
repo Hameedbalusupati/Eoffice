@@ -1,14 +1,15 @@
 /* 🔥 Sidebar Container */
 .sidebar {
   width: 230px;
-  height: 100vh;
+  height: calc(100vh - 60px); /* dynamic height */
   background-color: #0f172a;
   color: white;
   position: fixed;
-  top: 60px; /* below navbar */
+  top: 60px; /* match navbar height */
   left: 0;
   padding: 20px;
   overflow-y: auto;
+  transition: all 0.3s ease;
 }
 
 /* 🔹 Title */
@@ -34,15 +35,40 @@
   background-color: #1e293b;
   border-radius: 6px;
   cursor: pointer;
-  transition: 0.3s;
+  transition: all 0.3s ease;
 }
 
 /* 🔥 Hover Effect */
 .sidebar-item:hover {
   background-color: #3b82f6;
+  transform: translateX(5px);
 }
 
-/* 🔥 Active Style (optional later) */
-.sidebar-item.active {
-  background-color: #2563eb;
+/* ✅ Active Style (FIXED CLASS NAME) */
+.active-sidebar {
+  background-color: #2563eb !important;
+  font-weight: bold;
+}
+
+/* 🔥 Scrollbar Styling */
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background-color: #475569;
+  border-radius: 4px;
+}
+
+/* 📱 Responsive (Mobile) */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 180px;
+    padding: 15px;
+  }
+
+  .sidebar-item {
+    font-size: 14px;
+    padding: 10px;
+  }
 }

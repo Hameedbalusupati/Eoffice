@@ -1,61 +1,78 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function LeavesHistory() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user");
+  }
 
   // =========================
-  // 📄 FETCH DATA (SAFE)
+  // 📄 FETCH DATA
   // =========================
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (!user?.id) return;
 
-    let ignore = false;
+    try {
+      setLoading(true);
+      setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/leaves/user/${user.id}`
-        );
+      const res = await API.get(
+        `/academics/leaves/user/${user.id}`
+      );
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(res.data || []);
+    } catch (err) {
+      console.error(err);
+      setError("❌ Failed to load leave history");
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // =========================
-  // 🔥 FILTER (BEST PRACTICE)
+  // 🔍 FILTER (OPTIMIZED)
   // =========================
   const filteredData = useMemo(() => {
-    let temp = data;
+    let temp = [...data];
 
     if (search) {
       temp = temp.filter((item) =>
-        item.reason.toLowerCase().includes(search.toLowerCase())
+        (item.reason || "")
+          .toLowerCase()
+          .includes(search.toLowerCase())
       );
     }
 
     if (statusFilter) {
-      temp = temp.filter((item) => item.status === statusFilter);
+      temp = temp.filter(
+        (item) => item.status === statusFilter
+      );
     }
 
     return temp;
   }, [search, statusFilter, data]);
+
+  // =========================
+  // UI
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -83,52 +100,56 @@ export default function LeavesHistory() {
         </select>
       </div>
 
-      {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>From Date</th>
-            <th>To Date</th>
-            <th>Reason</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+      {/* ❌ ERROR */}
+      {error && <p style={styles.error}>{error}</p>}
 
-        <tbody>
-          {filteredData.length === 0 ? (
+      {/* ================= TABLE ================= */}
+      {loading ? (
+        <p>Loading...</p>
+      ) : filteredData.length === 0 ? (
+        <p>No leave records found</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No leave records found
-              </td>
+              <th>From Date</th>
+              <th>To Date</th>
+              <th>Reason</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
+          </thead>
+
+          <tbody>
+            {filteredData.map((item) => (
               <tr key={item.id}>
-                <td>{item.from_date}</td>
-                <td>{item.to_date}</td>
-                <td>{item.reason}</td>
+                <td>{item.from_date || "-"}</td>
+                <td>{item.to_date || "-"}</td>
+                <td>{item.reason || "-"}</td>
 
                 <td>
-                  <StatusIcon status={item.status === "approved"} />
+                  <StatusIcon
+                    status={item.status === "approved"}
+                  />
                   <span style={{ marginLeft: "8px" }}>
                     {item.status}
                   </span>
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
 // =========================
 const styles = {
-  container: { padding: "20px" },
+  container: {
+    padding: "20px",
+  },
 
   filter: {
     display: "flex",
@@ -154,8 +175,8 @@ const styles = {
     borderCollapse: "collapse",
   },
 
-  noData: {
-    textAlign: "center",
-    padding: "20px",
+  error: {
+    color: "red",
+    marginBottom: "10px",
   },
 };

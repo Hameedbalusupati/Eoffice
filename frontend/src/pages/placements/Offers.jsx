@@ -1,55 +1,60 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function Offers() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
-  // 📄 FETCH OFFERS
+  // 📄 FETCH OFFERS (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/placements/offers"
-        );
+    try {
+      const res = await API.get("/placements/offers");
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const offers =
+        res.data?.data || res.data?.offers || res.data || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(Array.isArray(offers) ? offers : []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load offers");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // =========================
-  // 🔍 FILTER
+  // 🔍 FILTER (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     if (!search) return data;
 
-    return data.filter((item) =>
-      item.student_name.toLowerCase().includes(search.toLowerCase()) ||
-      item.company.toLowerCase().includes(search.toLowerCase())
-    );
+    const query = search.toLowerCase();
+
+    return data.filter((item) => {
+      const student = (item?.student_name || "").toLowerCase();
+      const company = (item?.company || "").toLowerCase();
+
+      return student.includes(query) || company.includes(query);
+    });
   }, [data, search]);
 
   return (
     <div style={styles.container}>
       <h2>🎁 Placement Offers</h2>
 
-      {/* ================= SEARCH ================= */}
+      {/* SEARCH */}
       <input
         type="text"
         placeholder="Search student or company..."
@@ -58,48 +63,58 @@ export default function Offers() {
         style={styles.input}
       />
 
-      {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Student</th>
-            <th>Company</th>
-            <th>Role</th>
-            <th>Package (LPA)</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+      {/* STATUS */}
+      {loading && <p>⏳ Loading...</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
-        <tbody>
-          {filteredData.length === 0 ? (
+      {/* TABLE */}
+      {!loading && !error && (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No offers found
-              </td>
+              <th>Student</th>
+              <th>Company</th>
+              <th>Role</th>
+              <th>Package (LPA)</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.student_name}</td>
-                <td>{item.company}</td>
-                <td>{item.role}</td>
-                <td>{item.package}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={item.accepted} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {item.accepted ? "Accepted" : "Pending"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No offers found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item?.id || Math.random()}>
+                  <td>{item?.student_name || "—"}</td>
+                  <td>{item?.company || "—"}</td>
+                  <td>{item?.role || "—"}</td>
+                  <td>{item?.package ?? "—"}</td>
+
+                  <td>
+                    <StatusIcon status={item?.accepted} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {item?.accepted ? "Accepted" : "Pending"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
+
+      {/* REFRESH BUTTON */}
+      <button onClick={fetchData} style={styles.button}>
+        Refresh
+      </button>
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -123,5 +138,19 @@ const styles = {
   noData: {
     textAlign: "center",
     padding: "20px",
+  },
+
+  button: {
+    marginTop: "15px",
+    padding: "8px 12px",
+    background: "#16a34a",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
+
+  error: {
+    color: "red",
   },
 };

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function TeachingAssignments() {
@@ -11,8 +11,43 @@ export default function TeachingAssignments() {
 
   const [data, setData] = useState([]);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user");
+  }
+
+  // =========================
+  // 📄 FETCH ASSIGNMENTS
+  // =========================
+  const fetchData = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await API.get(
+        `/academics/teaching-assignments/${user.id}`
+      );
+
+      setData(res.data || []);
+    } catch (err) {
+      console.error(err);
+      setError("❌ Failed to load assignments");
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // =========================
   // 🔄 HANDLE INPUT
@@ -25,53 +60,32 @@ export default function TeachingAssignments() {
   };
 
   // =========================
-  // 📄 FETCH ASSIGNMENTS
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/teaching-assignments/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
-
-  // =========================
   // 🚀 ADD ASSIGNMENT
   // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!user?.id) {
+      setMessage("❌ Please login");
+      return;
+    }
+
     try {
+      setLoading(true);
+      setMessage("");
+
       const description = `
 Faculty: ${form.faculty_name}
 Subject: ${form.subject}
 Class: ${form.class_name}
       `;
 
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
+      await API.post("/academics/create", {
+        faculty_id: user.id,
         activity_name: "teaching_assignments",
         subject: form.subject,
         class_name: form.class_name,
-        description: description,
+        description,
         status: "completed",
       });
 
@@ -83,23 +97,28 @@ Class: ${form.class_name}
         class_name: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/teaching-assignments/${user.id}`
-      );
-      setData(res.data);
-
+      fetchData(); // 🔄 refresh
     } catch (err) {
       console.error(err);
       setMessage("❌ Failed to add assignment");
+    } finally {
+      setLoading(false);
     }
   };
+
+  // =========================
+  // UI
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
       <h2>📘 Teaching Assignments</h2>
 
       {message && <p style={styles.message}>{message}</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
       {/* ================= FORM ================= */}
       <form onSubmit={handleSubmit} style={styles.form}>
@@ -133,37 +152,39 @@ Class: ${form.class_name}
           style={styles.input}
         />
 
-        <button type="submit" style={styles.button}>
-          Assign Subject
+        <button
+          type="submit"
+          style={styles.button}
+          disabled={loading}
+        >
+          {loading ? "Adding..." : "Assign Subject"}
         </button>
       </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Subject</th>
-            <th>Class</th>
-            <th>Description</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading...</p>
+      ) : data.length === 0 ? (
+        <p>No assignments found</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No assignments found
-              </td>
+              <th>Subject</th>
+              <th>Class</th>
+              <th>Description</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => (
+          </thead>
+
+          <tbody>
+            {data.map((item) => (
               <tr key={item.id}>
-                <td>{item.subject}</td>
-                <td>{item.class_name}</td>
+                <td>{item.subject || "-"}</td>
+                <td>{item.class_name || "-"}</td>
 
                 <td style={styles.desc}>
-                  {item.description}
+                  {item.description || "-"}
                 </td>
 
                 <td>
@@ -172,14 +193,13 @@ Class: ${form.class_name}
                   />
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -206,8 +226,8 @@ const styles = {
     backgroundColor: "#9333ea",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {
@@ -228,5 +248,11 @@ const styles = {
   message: {
     marginBottom: "10px",
     fontWeight: "bold",
+    color: "green",
+  },
+
+  error: {
+    color: "red",
+    marginBottom: "10px",
   },
 };

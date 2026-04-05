@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../../services/api"; // ✅ use central API
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function Projects() {
@@ -14,53 +14,54 @@ export default function Projects() {
 
   const [data, setData] = useState([]);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user");
+  }
 
   // =========================
-  // 🔄 HANDLE INPUT
+  // 🔄 INPUT
   // =========================
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
   // =========================
-  // 📄 FETCH PROJECTS (FIXED)
+  // 📄 FETCH PROJECTS
   // =========================
-  useEffect(() => {
+  const fetchProjects = useCallback(async () => {
     if (!user?.id) return;
 
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/projects/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+    try {
+      setLoading(true);
+      const res = await API.get(`/academics/projects/${user.id}`);
+      setData(res.data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
+
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
 
   // =========================
   // 🚀 ADD PROJECT
   // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!user?.id) {
+      setMessage("❌ Please login first");
+      return;
+    }
 
     try {
       const description = `
@@ -72,12 +73,12 @@ Details:
 ${form.description}
       `;
 
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
+      await API.post("/academics/create", {
+        faculty_id: user.id,
         activity_name: "projects",
         subject: form.title,
         class_name: form.class_name,
-        description: description,
+        description,
         status: "completed",
       });
 
@@ -92,17 +93,17 @@ ${form.description}
         description: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/projects/${user.id}`
-      );
-      setData(res.data);
-
+      fetchProjects(); // ✅ refresh properly
     } catch (err) {
       console.error(err);
       setMessage("❌ Failed to add project");
     }
   };
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -176,51 +177,50 @@ ${form.description}
       </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Class</th>
-            <th>Description</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No projects found
-              </td>
+              <th>Title</th>
+              <th>Class</th>
+              <th>Description</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => (
-              <tr key={item.id}>
-                <td>{item.subject}</td>
-                <td>{item.class_name}</td>
+          </thead>
 
-                <td style={styles.desc}>
-                  {item.description}
-                </td>
-
-                <td>
-                  <StatusIcon
-                    status={item.status === "completed"}
-                  />
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No projects found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              data.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.subject || "-"}</td>
+                  <td>{item.class_name || "-"}</td>
+
+                  <td style={styles.desc}>
+                    {item.description || "-"}
+                  </td>
+
+                  <td>
+                    <StatusIcon status={item.status === "completed"} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: { padding: "20px" },
 

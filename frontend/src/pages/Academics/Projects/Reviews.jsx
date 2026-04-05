@@ -1,58 +1,47 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
-export default function ProjectsReport() {
+export default function ProjectReviews() {
   const [data, setData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const [summary, setSummary] = useState({
-    total: 0,
-    completed: 0,
-    ongoing: 0,
-  });
-
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user data");
+  }
 
   // =========================
-  // 📄 FETCH DATA (FIXED)
+  // 📄 FETCH PROJECT REVIEWS
   // =========================
-  useEffect(() => {
+  const fetchReviews = useCallback(async () => {
     if (!user?.id) return;
 
-    let ignore = false;
+    try {
+      setLoading(true);
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/projects/${user.id}`
-        );
+      const res = await API.get(`/academics/projects/${user.id}`);
 
-        if (!ignore) {
-          setData(res.data);
-          setFilteredData(res.data);
+      // 👉 Only projects
+      const projects = res.data || [];
 
-          // 🔥 SUMMARY
-          const total = res.data.length;
-          const completed = res.data.filter(
-            (item) => item.status === "completed"
-          ).length;
-          const ongoing = total - completed;
-
-          setSummary({ total, completed, ongoing });
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(projects);
+      setFilteredData(projects);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
+
+  useEffect(() => {
+    fetchReviews();
+  }, [fetchReviews]);
 
   // =========================
   // 🔍 SEARCH
@@ -61,108 +50,84 @@ export default function ProjectsReport() {
     const value = e.target.value.toLowerCase();
     setSearch(value);
 
-    const filtered = data.filter(
-      (item) =>
-        item.subject.toLowerCase().includes(value) ||
-        item.class_name.toLowerCase().includes(value)
-    );
+    const filtered = data.filter((item) => {
+      const title = item.subject?.toLowerCase() || "";
+      const className = item.class_name?.toLowerCase() || "";
+
+      return title.includes(value) || className.includes(value);
+    });
 
     setFilteredData(filtered);
   };
 
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
+
   return (
     <div style={styles.container}>
-      <h2>📊 Projects Report</h2>
-
-      {/* 📈 SUMMARY */}
-      <div style={styles.cards}>
-        <div style={styles.card}>
-          <h3>Total</h3>
-          <p>{summary.total}</p>
-        </div>
-
-        <div style={{ ...styles.card, backgroundColor: "#22c55e" }}>
-          <h3>Completed</h3>
-          <p>{summary.completed}</p>
-        </div>
-
-        <div style={{ ...styles.card, backgroundColor: "#f59e0b" }}>
-          <h3>Ongoing</h3>
-          <p>{summary.ongoing}</p>
-        </div>
-      </div>
+      <h2>📝 Project Reviews</h2>
 
       {/* 🔍 SEARCH */}
       <input
         type="text"
-        placeholder="Search project..."
+        placeholder="Search by title or class..."
         value={search}
         onChange={handleSearch}
         style={styles.search}
       />
 
       {/* 📋 TABLE */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Class</th>
-            <th>Description</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No projects found
-              </td>
+              <th>Project Title</th>
+              <th>Class</th>
+              <th>Description</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.subject}</td>
-                <td>{item.class_name}</td>
+          </thead>
 
-                <td style={styles.desc}>
-                  {item.description}
-                </td>
-
-                <td>
-                  <StatusIcon
-                    status={item.status === "completed"}
-                  />
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No project reviews found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.subject || "-"}</td>
+                  <td>{item.class_name || "-"}</td>
+
+                  <td style={styles.desc}>
+                    {item.description || "-"}
+                  </td>
+
+                  <td>
+                    <StatusIcon status={item.status === "completed"} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
 // =========================
 const styles = {
-  container: { padding: "20px" },
-
-  cards: {
-    display: "flex",
-    gap: "20px",
-    marginBottom: "20px",
-  },
-
-  card: {
-    flex: 1,
-    backgroundColor: "#3b82f6",
-    color: "#fff",
-    padding: "15px",
-    borderRadius: "8px",
-    textAlign: "center",
+  container: {
+    padding: "20px",
   },
 
   search: {
@@ -186,5 +151,6 @@ const styles = {
   noData: {
     textAlign: "center",
     padding: "20px",
+    color: "#777",
   },
 };

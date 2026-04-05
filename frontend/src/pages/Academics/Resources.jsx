@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function Resources() {
@@ -13,8 +13,40 @@ export default function Resources() {
 
   const [data, setData] = useState([]);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user");
+  }
+
+  // =========================
+  // 📄 FETCH RESOURCES
+  // =========================
+  const fetchData = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await API.get(`/academics/resources/${user.id}`);
+      setData(res.data || []);
+    } catch (err) {
+      console.error(err);
+      setError("❌ Failed to load resources");
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // =========================
   // 🔄 HANDLE INPUT
@@ -27,41 +59,20 @@ export default function Resources() {
   };
 
   // =========================
-  // 📄 FETCH RESOURCES
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/resources/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
-
-  // =========================
   // 🚀 ADD RESOURCE
   // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!user?.id) {
+      setMessage("❌ Please login");
+      return;
+    }
+
     try {
+      setLoading(true);
+      setMessage("");
+
       const description = `
 Link: ${form.link}
 
@@ -69,12 +80,12 @@ Details:
 ${form.description}
       `;
 
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
+      await API.post("/academics/create", {
+        faculty_id: user.id,
         activity_name: "resources",
         subject: form.title,
         class_name: form.class_name,
-        description: description,
+        description,
         status: "completed",
       });
 
@@ -88,23 +99,28 @@ ${form.description}
         description: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/resources/${user.id}`
-      );
-      setData(res.data);
-
+      fetchData(); // 🔄 refresh
     } catch (err) {
       console.error(err);
       setMessage("❌ Failed to add resource");
+    } finally {
+      setLoading(false);
     }
   };
+
+  // =========================
+  // UI
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
       <h2>📚 Resources</h2>
 
       {message && <p style={styles.message}>{message}</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
       {/* ================= FORM ================= */}
       <form onSubmit={handleSubmit} style={styles.form}>
@@ -141,7 +157,7 @@ ${form.description}
         <input
           type="url"
           name="link"
-          placeholder="Resource Link (Google Drive / PDF)"
+          placeholder="Resource Link"
           value={form.link}
           onChange={handleChange}
           required
@@ -156,44 +172,45 @@ ${form.description}
           style={styles.textarea}
         />
 
-        <button type="submit" style={styles.button}>
-          Add Resource
+        <button
+          type="submit"
+          style={styles.button}
+          disabled={loading}
+        >
+          {loading ? "Adding..." : "Add Resource"}
         </button>
       </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Class</th>
-            <th>Description</th>
-            <th>Link</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading...</p>
+      ) : data.length === 0 ? (
+        <p>No resources found</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No resources found
-              </td>
+              <th>Title</th>
+              <th>Class</th>
+              <th>Description</th>
+              <th>Link</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => {
-              // extract link from description
-              const linkMatch = item.description.match(/Link:\s*(.*)/);
-              const link = linkMatch ? linkMatch[1] : "#";
+          </thead>
+
+          <tbody>
+            {data.map((item) => {
+              const desc = item.description || "";
+
+              const linkMatch = desc.match(/Link:\s*(.*)/);
+              const link = linkMatch ? linkMatch[1].trim() : "#";
 
               return (
                 <tr key={item.id}>
-                  <td>{item.subject}</td>
-                  <td>{item.class_name}</td>
+                  <td>{item.subject || "-"}</td>
+                  <td>{item.class_name || "-"}</td>
 
-                  <td style={styles.desc}>
-                    {item.description}
-                  </td>
+                  <td style={styles.desc}>{desc}</td>
 
                   <td>
                     <a href={link} target="_blank" rel="noreferrer">
@@ -208,14 +225,13 @@ ${form.description}
                   </td>
                 </tr>
               );
-            })
-          )}
-        </tbody>
-      </table>
+            })}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -249,8 +265,8 @@ const styles = {
     backgroundColor: "#0891b2",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {
@@ -271,5 +287,11 @@ const styles = {
   message: {
     marginBottom: "10px",
     fontWeight: "bold",
+    color: "green",
+  },
+
+  error: {
+    color: "red",
+    marginBottom: "10px",
   },
 };

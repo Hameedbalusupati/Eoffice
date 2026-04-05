@@ -1,50 +1,53 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function StaffVsCourses() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/employee/staff-courses"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchStaffCourses = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/employee/staff-courses");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // =========================
-  // 🔍 FILTER LOGIC
+  // 🔁 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchStaffCourses();
+  }, [fetchStaffCourses]);
+
+  // =========================
+  // 🔍 FILTER LOGIC (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     if (!search) return data;
 
     return data.filter((item) =>
-      item.staff_name.toLowerCase().includes(search.toLowerCase()) ||
-      item.course.toLowerCase().includes(search.toLowerCase())
+      (item.staff_name || "")
+        .toLowerCase()
+        .includes(search.toLowerCase()) ||
+      (item.course || "")
+        .toLowerCase()
+        .includes(search.toLowerCase())
     );
   }, [data, search]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>👨‍🏫 Staff vs Courses</h2>
@@ -59,45 +62,48 @@ export default function StaffVsCourses() {
       />
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Staff Name</th>
-            <th>Course</th>
-            <th>Department</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading data...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No records found
-              </td>
+              <th>Staff Name</th>
+              <th>Course</th>
+              <th>Department</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.staff_name}</td>
-                <td>{item.course}</td>
-                <td>{item.department}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={true} />
-                  <span style={{ marginLeft: "6px" }}>
-                    Assigned
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No records found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.staff_name || "—"}</td>
+                  <td>{item.course || "—"}</td>
+                  <td>{item.department || "—"}</td>
+
+                  <td>
+                    <StatusIcon status={true} />
+                    <span style={{ marginLeft: "6px" }}>
+                      Assigned
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

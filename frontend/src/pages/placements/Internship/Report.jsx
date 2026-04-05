@@ -1,52 +1,58 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function InternshipReport() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/placements/internship/all"
-        );
+    try {
+      const res = await API.get(
+        "/placements/internship/all"
+      );
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const items =
+        res.data?.data || res.data?.internships || res.data || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(Array.isArray(items) ? items : []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load internship report");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // =========================
-  // 🔍 FILTER LOGIC
+  // 🔍 FILTER LOGIC (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     return data.filter((item) => {
+      const company = (item?.company || "").toLowerCase();
+      const role = (item?.role || "").toLowerCase();
+      const query = search.toLowerCase();
+
       const matchesSearch =
-        item.company.toLowerCase().includes(search.toLowerCase()) ||
-        item.role.toLowerCase().includes(search.toLowerCase());
+        company.includes(query) || role.includes(query);
 
       const matchesStatus =
-        statusFilter === "" ||
-        (statusFilter === "open" && item.open) ||
-        (statusFilter === "closed" && !item.open);
+        !statusFilter ||
+        (statusFilter === "open" && item?.open) ||
+        (statusFilter === "closed" && !item?.open);
 
       return matchesSearch && matchesStatus;
     });
@@ -56,7 +62,7 @@ export default function InternshipReport() {
     <div style={styles.container}>
       <h2>📊 Internship Report</h2>
 
-      {/* ================= FILTERS ================= */}
+      {/* FILTERS */}
       <div style={styles.filters}>
         <input
           type="text"
@@ -75,52 +81,66 @@ export default function InternshipReport() {
           <option value="open">Open</option>
           <option value="closed">Closed</option>
         </select>
+
+        <button onClick={fetchData} style={styles.button}>
+          Refresh
+        </button>
       </div>
 
-      {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Company</th>
-            <th>Role</th>
-            <th>Location</th>
-            <th>Stipend</th>
-            <th>Deadline</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+      {/* STATUS */}
+      {loading && <p>⏳ Loading...</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
-        <tbody>
-          {filteredData.length === 0 ? (
+      {/* TABLE */}
+      {!loading && !error && (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="6" style={styles.noData}>
-                No records found
-              </td>
+              <th>Company</th>
+              <th>Role</th>
+              <th>Location</th>
+              <th>Stipend</th>
+              <th>Deadline</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.company}</td>
-                <td>{item.role}</td>
-                <td>{item.location}</td>
-                <td>₹{item.stipend}</td>
-                <td>{item.deadline}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={item.open} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {item.open ? "Open" : "Closed"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="6" style={styles.noData}>
+                  No records found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item?.id || Math.random()}>
+                  <td>{item?.company || "—"}</td>
+                  <td>{item?.role || "—"}</td>
+                  <td>{item?.location || "—"}</td>
+                  <td>₹{item?.stipend ?? "—"}</td>
+
+                  <td>
+                    {item?.deadline
+                      ? new Date(item.deadline).toLocaleDateString()
+                      : "—"}
+                  </td>
+
+                  <td>
+                    <StatusIcon status={item?.open} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {item?.open ? "Open" : "Closed"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -132,6 +152,7 @@ const styles = {
     display: "flex",
     gap: "10px",
     marginBottom: "15px",
+    flexWrap: "wrap",
   },
 
   input: {
@@ -147,6 +168,15 @@ const styles = {
     borderRadius: "5px",
   },
 
+  button: {
+    padding: "8px 12px",
+    background: "#007bff",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
+
   table: {
     width: "100%",
     borderCollapse: "collapse",
@@ -155,5 +185,9 @@ const styles = {
   noData: {
     textAlign: "center",
     padding: "20px",
+  },
+
+  error: {
+    color: "red",
   },
 };

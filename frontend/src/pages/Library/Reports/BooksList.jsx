@@ -1,47 +1,55 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function BooksList() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH BOOKS
+  // 📄 FETCH BOOKS (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/library/books"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchBooks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/library/books");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // =========================
-  // 🔍 FILTER LOGIC
+  // 🔁 USE EFFECT
+  // =========================
+  useEffect(() => {
+    fetchBooks();
+  }, [fetchBooks]);
+
+  // =========================
+  // 📊 UNIQUE CATEGORIES (DYNAMIC)
+  // =========================
+  const categories = useMemo(() => {
+    const set = new Set(data.map((b) => b.category).filter(Boolean));
+    return Array.from(set);
+  }, [data]);
+
+  // =========================
+  // 🔍 FILTER LOGIC (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     return data.filter((book) => {
       const matchesSearch =
-        book.title.toLowerCase().includes(search.toLowerCase()) ||
-        book.author.toLowerCase().includes(search.toLowerCase());
+        (book.title || "")
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        (book.author || "")
+          .toLowerCase()
+          .includes(search.toLowerCase());
 
       const matchesCategory =
         categoryFilter === "" ||
@@ -51,6 +59,9 @@ export default function BooksList() {
     });
   }, [data, search, categoryFilter]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>📚 Books List</h2>
@@ -71,53 +82,57 @@ export default function BooksList() {
           style={styles.select}
         >
           <option value="">All Categories</option>
-          <option value="Database">Database</option>
-          <option value="OS">OS</option>
-          <option value="AI">AI</option>
-          <option value="Networks">Networks</option>
+          {categories.map((cat, index) => (
+            <option key={index} value={cat}>
+              {cat}
+            </option>
+          ))}
         </select>
       </div>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Author</th>
-            <th>Category</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading books...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No books found
-              </td>
+              <th>Title</th>
+              <th>Author</th>
+              <th>Category</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((book) => (
-              <tr key={book.id}>
-                <td>{book.title}</td>
-                <td>{book.author}</td>
-                <td>{book.category}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={book.available} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {book.available ? "Available" : "Issued"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No books found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((book) => (
+                <tr key={book.id}>
+                  <td>{book.title || "—"}</td>
+                  <td>{book.author || "—"}</td>
+                  <td>{book.category || "—"}</td>
+
+                  <td>
+                    <StatusIcon status={book.available} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {book.available ? "Available" : "Issued"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

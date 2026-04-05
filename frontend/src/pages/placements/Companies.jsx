@@ -1,55 +1,60 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function Companies() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
-  // 📄 FETCH COMPANIES
+  // 📄 FETCH COMPANIES (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/placements/companies"
-        );
+    try {
+      const res = await API.get("/placements/companies");
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const companies =
+        res.data?.data || res.data?.companies || res.data || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(Array.isArray(companies) ? companies : []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load companies");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // =========================
-  // 🔍 FILTER
+  // 🔍 FILTER (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     if (!search) return data;
 
-    return data.filter((item) =>
-      item.company.toLowerCase().includes(search.toLowerCase()) ||
-      item.role.toLowerCase().includes(search.toLowerCase())
-    );
+    const query = search.toLowerCase();
+
+    return data.filter((item) => {
+      const company = (item?.company || "").toLowerCase();
+      const role = (item?.role || "").toLowerCase();
+
+      return company.includes(query) || role.includes(query);
+    });
   }, [data, search]);
 
   return (
     <div style={styles.container}>
       <h2>🏢 Placement Companies</h2>
 
-      {/* ================= SEARCH ================= */}
+      {/* SEARCH */}
       <input
         type="text"
         placeholder="Search company or role..."
@@ -58,48 +63,58 @@ export default function Companies() {
         style={styles.input}
       />
 
-      {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Company</th>
-            <th>Role</th>
-            <th>Location</th>
-            <th>Package (LPA)</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+      {/* STATUS */}
+      {loading && <p>⏳ Loading...</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
-        <tbody>
-          {filteredData.length === 0 ? (
+      {/* TABLE */}
+      {!loading && !error && (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No companies found
-              </td>
+              <th>Company</th>
+              <th>Role</th>
+              <th>Location</th>
+              <th>Package (LPA)</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.company}</td>
-                <td>{item.role}</td>
-                <td>{item.location}</td>
-                <td>{item.package}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={item.active} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {item.active ? "Active" : "Closed"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No companies found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item?.id || Math.random()}>
+                  <td>{item?.company || "—"}</td>
+                  <td>{item?.role || "—"}</td>
+                  <td>{item?.location || "—"}</td>
+                  <td>{item?.package ?? "—"}</td>
+
+                  <td>
+                    <StatusIcon status={item?.active} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {item?.active ? "Active" : "Closed"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
+
+      {/* REFRESH BUTTON */}
+      <button onClick={fetchData} style={styles.button}>
+        Refresh
+      </button>
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -123,5 +138,19 @@ const styles = {
   noData: {
     textAlign: "center",
     padding: "20px",
+  },
+
+  button: {
+    marginTop: "15px",
+    padding: "8px 12px",
+    background: "#16a34a",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
+
+  error: {
+    color: "red",
   },
 };

@@ -1,64 +1,74 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 
 export default function PlacementsAll() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/placements/all"
-        );
+    try {
+      const res = await API.get("/placements/all");
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const items =
+        res.data?.data || res.data?.placements || res.data || [];
 
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(Array.isArray(items) ? items : []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load placement data");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // =========================
-  // 🔍 FILTER LOGIC
+  // 📊 UNIQUE COMPANIES (SAFE)
+  // =========================
+  const companies = useMemo(() => {
+    return [
+      ...new Set(
+        data.map((d) => d?.company).filter(Boolean)
+      ),
+    ];
+  }, [data]);
+
+  // =========================
+  // 🔍 FILTER LOGIC (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     return data.filter((item) => {
+      const student = (item?.student_name || "").toLowerCase();
+      const company = (item?.company || "").toLowerCase();
+      const query = search.toLowerCase();
+
       const matchesSearch =
-        item.student_name.toLowerCase().includes(search.toLowerCase()) ||
-        item.company.toLowerCase().includes(search.toLowerCase());
+        student.includes(query) || company.includes(query);
 
       const matchesCompany =
-        companyFilter === "" || item.company === companyFilter;
+        !companyFilter || item?.company === companyFilter;
 
       return matchesSearch && matchesCompany;
     });
   }, [data, search, companyFilter]);
 
-  // =========================
-  // 📊 UNIQUE COMPANIES
-  // =========================
-  const companies = [...new Set(data.map((d) => d.company))];
-
   return (
     <div style={styles.container}>
       <h2>🎯 All Placements</h2>
 
-      {/* ================= FILTERS ================= */}
+      {/* FILTERS */}
       <div style={styles.filters}>
         <input
           type="text"
@@ -80,44 +90,53 @@ export default function PlacementsAll() {
             </option>
           ))}
         </select>
+
+        <button onClick={fetchData} style={styles.button}>
+          Refresh
+        </button>
       </div>
 
-      {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Student Name</th>
-            <th>Company</th>
-            <th>Role</th>
-            <th>Package (LPA)</th>
-            <th>Year</th>
-          </tr>
-        </thead>
+      {/* STATUS */}
+      {loading && <p>⏳ Loading...</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
-        <tbody>
-          {filteredData.length === 0 ? (
+      {/* TABLE */}
+      {!loading && !error && (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No placement records found
-              </td>
+              <th>Student Name</th>
+              <th>Company</th>
+              <th>Role</th>
+              <th>Package (LPA)</th>
+              <th>Year</th>
             </tr>
-          ) : (
-            filteredData.map((item) => (
-              <tr key={item.id}>
-                <td>{item.student_name}</td>
-                <td>{item.company}</td>
-                <td>{item.role}</td>
-                <td>{item.package}</td>
-                <td>{item.year}</td>
+          </thead>
+
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No placement records found
+                </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((item) => (
+                <tr key={item?.id || Math.random()}>
+                  <td>{item?.student_name || "—"}</td>
+                  <td>{item?.company || "—"}</td>
+                  <td>{item?.role || "—"}</td>
+                  <td>{item?.package ?? "—"}</td>
+                  <td>{item?.year || "—"}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -129,6 +148,7 @@ const styles = {
     display: "flex",
     gap: "10px",
     marginBottom: "15px",
+    flexWrap: "wrap",
   },
 
   input: {
@@ -144,6 +164,15 @@ const styles = {
     borderRadius: "5px",
   },
 
+  button: {
+    padding: "8px 12px",
+    background: "#007bff",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
+
   table: {
     width: "100%",
     borderCollapse: "collapse",
@@ -152,5 +181,9 @@ const styles = {
   noData: {
     textAlign: "center",
     padding: "20px",
+  },
+
+  error: {
+    color: "red",
   },
 };

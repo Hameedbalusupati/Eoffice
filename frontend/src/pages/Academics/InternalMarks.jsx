@@ -1,18 +1,62 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-import StatusIcon from "../../components/StatusIcon";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
 
-export default function Circulars() {
+export default function InternalMarks() {
   const [form, setForm] = useState({
-    title: "",
-    message: "",
+    student_name: "",
+    roll_no: "",
+    subject: "",
+    class_name: "",
+    internal_marks: "",
     date: "",
+    description: "",
   });
 
   const [data, setData] = useState([]);
-  const [message, setMessage] = useState("");
+  const [filteredData, setFilteredData] = useState([]);
+  const [search, setSearch] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user");
+  }
+
+  // =========================
+  // 📄 FETCH DATA
+  // =========================
+  const fetchData = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await API.get(`/academics/faculty/${user.id}`);
+
+      const marksData = (res.data || []).filter(
+        (item) => item.activity_name === "internal_marks"
+      );
+
+      setData(marksData);
+      setFilteredData(marksData);
+    } catch (err) {
+      console.error(err);
+      setError("❌ Failed to load marks");
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // =========================
   // 🔄 HANDLE INPUT
@@ -25,90 +69,138 @@ export default function Circulars() {
   };
 
   // =========================
-  // 📄 FETCH CIRCULARS
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/circulars/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
-
-  // =========================
-  // 🚀 ADD CIRCULAR
+  // 🚀 SUBMIT
   // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!user?.id) {
+      setMessage("❌ Please login");
+      return;
+    }
+
     try {
+      setLoading(true);
+      setMessage("");
+
       const description = `
+Student: ${form.student_name} (${form.roll_no})
+Internal Marks: ${form.internal_marks}
 Date: ${form.date}
 
-Message:
-${form.message}
+Details:
+${form.description}
       `;
 
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
-        activity_name: "circulars",
-        subject: form.title,
-        class_name: "All",
-        description: description,
+      await API.post("/academics/create", {
+        faculty_id: user.id,
+        activity_name: "internal_marks",
+        subject: form.subject,
+        class_name: form.class_name,
+        description,
         status: "completed",
       });
 
-      setMessage("📢 Circular added successfully!");
+      setMessage("✅ Internal marks added successfully!");
 
       setForm({
-        title: "",
-        message: "",
+        student_name: "",
+        roll_no: "",
+        subject: "",
+        class_name: "",
+        internal_marks: "",
         date: "",
+        description: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/circulars/${user.id}`
-      );
-      setData(res.data);
-
+      fetchData();
     } catch (err) {
       console.error(err);
-      setMessage("❌ Failed to add circular");
+      setMessage("❌ Failed to submit marks");
+    } finally {
+      setLoading(false);
     }
   };
 
+  // =========================
+  // 🔍 SEARCH
+  // =========================
+  const handleSearch = (e) => {
+    const value = e.target.value.toLowerCase();
+    setSearch(value);
+
+    const filtered = data.filter(
+      (item) =>
+        (item.subject || "").toLowerCase().includes(value) ||
+        (item.class_name || "").toLowerCase().includes(value) ||
+        (item.description || "").toLowerCase().includes(value)
+    );
+
+    setFilteredData(filtered);
+  };
+
+  // =========================
+  // UI
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
+
   return (
     <div style={styles.container}>
-      <h2>📢 Circulars</h2>
+      <h2>📝 Internal Marks</h2>
 
+      {/* MESSAGE */}
       {message && <p style={styles.message}>{message}</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
       {/* ================= FORM ================= */}
       <form onSubmit={handleSubmit} style={styles.form}>
         <input
           type="text"
-          name="title"
-          placeholder="Circular Title"
-          value={form.title}
+          name="student_name"
+          placeholder="Student Name"
+          value={form.student_name}
+          onChange={handleChange}
+          required
+          style={styles.input}
+        />
+
+        <input
+          type="text"
+          name="roll_no"
+          placeholder="Roll Number"
+          value={form.roll_no}
+          onChange={handleChange}
+          required
+          style={styles.input}
+        />
+
+        <input
+          type="text"
+          name="subject"
+          placeholder="Subject"
+          value={form.subject}
+          onChange={handleChange}
+          required
+          style={styles.input}
+        />
+
+        <input
+          type="text"
+          name="class_name"
+          placeholder="Class"
+          value={form.class_name}
+          onChange={handleChange}
+          required
+          style={styles.input}
+        />
+
+        <input
+          type="number"
+          name="internal_marks"
+          placeholder="Marks"
+          value={form.internal_marks}
           onChange={handleChange}
           required
           style={styles.input}
@@ -124,59 +216,56 @@ ${form.message}
         />
 
         <textarea
-          name="message"
-          placeholder="Circular Message"
-          value={form.message}
+          name="description"
+          placeholder="Additional Notes"
+          value={form.description}
           onChange={handleChange}
-          required
           style={styles.textarea}
         />
 
-        <button type="submit" style={styles.button}>
-          Add Circular
+        <button type="submit" style={styles.button} disabled={loading}>
+          {loading ? "Submitting..." : "Add Marks"}
         </button>
       </form>
 
-      {/* ================= LIST ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Description</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+      {/* ================= SEARCH ================= */}
+      <input
+        type="text"
+        placeholder="Search..."
+        value={search}
+        onChange={handleSearch}
+        style={styles.search}
+      />
 
-        <tbody>
-          {data.length === 0 ? (
+      {/* ================= TABLE ================= */}
+      {loading ? (
+        <p>Loading...</p>
+      ) : filteredData.length === 0 ? (
+        <p>No records found</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="3" style={styles.noData}>
-                No circulars found
-              </td>
+              <th>Subject</th>
+              <th>Class</th>
+              <th>Description</th>
             </tr>
-          ) : (
-            data.map((item) => (
+          </thead>
+
+          <tbody>
+            {filteredData.map((item) => (
               <tr key={item.id}>
                 <td>{item.subject}</td>
-
-                <td style={styles.desc}>
-                  {item.description}
-                </td>
-
-                <td>
-                  <StatusIcon
-                    status={item.status === "completed"}
-                  />
-                </td>
+                <td>{item.class_name}</td>
+                <td>{item.description}</td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -187,31 +276,39 @@ const styles = {
   form: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
-    maxWidth: "400px",
+    gap: "12px",
+    maxWidth: "450px",
     marginBottom: "20px",
   },
 
   input: {
     padding: "10px",
-    border: "1px solid #ccc",
     borderRadius: "5px",
+    border: "1px solid #ccc",
   },
 
   textarea: {
     padding: "10px",
-    border: "1px solid #ccc",
     borderRadius: "5px",
-    minHeight: "100px",
+    border: "1px solid #ccc",
+    minHeight: "80px",
   },
 
   button: {
     padding: "10px",
-    backgroundColor: "#f97316",
+    backgroundColor: "#0ea5e9",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
+  },
+
+  search: {
+    padding: "10px",
+    width: "300px",
+    marginBottom: "15px",
+    borderRadius: "5px",
+    border: "1px solid #ccc",
   },
 
   table: {
@@ -219,18 +316,13 @@ const styles = {
     borderCollapse: "collapse",
   },
 
-  desc: {
-    maxWidth: "400px",
-    wordWrap: "break-word",
-  },
-
-  noData: {
-    textAlign: "center",
-    padding: "20px",
-  },
-
   message: {
+    color: "green",
     marginBottom: "10px",
-    fontWeight: "bold",
+  },
+
+  error: {
+    color: "red",
+    marginBottom: "10px",
   },
 };

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import axios from "axios";
+import API from "../services/api"; // ✅ FIX
 
 export default function Register() {
   const navigate = useNavigate();
@@ -15,10 +15,9 @@ export default function Register() {
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // =========================
   // 🔄 HANDLE INPUT
-  // =========================
   const handleChange = (e) => {
     setForm({
       ...form,
@@ -26,45 +25,46 @@ export default function Register() {
     });
   };
 
-  // =========================
   // 🚀 HANDLE REGISTER
-  // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     setMessage("");
     setError("");
 
-    // 🔥 VALIDATION
+    // 🔐 VALIDATION
     if (form.password !== form.confirmPassword) {
       setError("❌ Passwords do not match");
       return;
     }
 
+    setLoading(true);
+
     try {
-      const res = await axios.post(
-        "http://127.0.0.1:8000/auth/register",
-        {
-          name: form.name,
-          email: form.email,
-          password: form.password,
-          role: form.role,
-        }
-      );
+      const res = await API.post("/auth/register", {
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        role: form.role,
+      });
 
-      setMessage("✅ Registration successful! Redirecting to login...");
+      setMessage("✅ Registration successful! Redirecting...");
 
-      // 🔄 Redirect after 2 sec
       setTimeout(() => {
-        navigate("/login");
-      }, 2000);
+        navigate("/");
+      }, 1500);
 
       console.log(res.data);
     } catch (err) {
-      console.error(err);
+      console.error("Register error:", err);
+
       setError(
-        err.response?.data?.detail || "❌ Registration failed"
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "❌ Registration failed"
       );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -130,25 +130,25 @@ export default function Register() {
             <option value="admin">Admin</option>
           </select>
 
-          <button type="submit" style={styles.button}>
-            Register
+          <button
+            type="submit"
+            style={styles.button}
+            disabled={loading}
+          >
+            {loading ? "Registering..." : "Register"}
           </button>
         </form>
 
         {/* 🔗 Login Link */}
         <p style={styles.linkText}>
-          Already have an account?{" "}
-          <Link to="/login">Login</Link>
+          Already have an account? <Link to="/">Login</Link>
         </p>
       </div>
     </div>
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     height: "100vh",

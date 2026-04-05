@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import API from "../../services/api";
 
 export default function AcademicRegister() {
   const [form, setForm] = useState({
@@ -11,8 +11,15 @@ export default function AcademicRegister() {
   });
 
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user data");
+  }
 
   // =========================
   // 🔄 HANDLE INPUT
@@ -30,23 +37,32 @@ export default function AcademicRegister() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!user?.id) {
+      setMessage("❌ User not logged in");
+      return;
+    }
+
     try {
+      setLoading(true);
+      setMessage("");
+
       const description = `
 Date: ${form.date}
 Topic: ${form.topic}
 Details: ${form.description}
       `;
 
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
+      await API.post("/academics/create", {
+        faculty_id: user.id,
         activity_name: "academic_register",
         subject: form.subject,
         class_name: form.class_name,
-        description: description,
+        description,
       });
 
       setMessage("✅ Academic register entry added successfully!");
 
+      // ✅ Reset form
       setForm({
         subject: "",
         class_name: "",
@@ -57,8 +73,17 @@ Details: ${form.description}
     } catch (error) {
       console.error(error);
       setMessage("❌ Failed to submit data");
+    } finally {
+      setLoading(false);
     }
   };
+
+  // =========================
+  // UI
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -116,14 +141,17 @@ Details: ${form.description}
           style={styles.textarea}
         />
 
-        <button type="submit" style={styles.button}>
-          Submit Entry
+        <button
+          type="submit"
+          style={styles.button}
+          disabled={loading}
+        >
+          {loading ? "Submitting..." : "Submit Entry"}
         </button>
       </form>
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

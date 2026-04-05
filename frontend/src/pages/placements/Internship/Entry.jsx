@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import API from "../../../services/api";
 
 export default function InternshipEntry() {
   const [form, setForm] = useState({
@@ -12,6 +12,7 @@ export default function InternshipEntry() {
   });
 
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
   // 📝 HANDLE CHANGE
@@ -26,27 +27,36 @@ export default function InternshipEntry() {
   };
 
   // =========================
-  // 🚀 SUBMIT
+  // 🚀 SUBMIT (FIXED)
   // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    setError("");
+
+    // ✅ Basic validation
     if (!form.company || !form.role) {
-      alert("Company and Role are required!");
+      setError("Company and Role are required!");
       return;
     }
 
     try {
       setLoading(true);
 
-      await axios.post(
-        "http://127.0.0.1:8000/placements/internship/create",
-        form
+      // 🔥 Convert stipend to number
+      const payload = {
+        ...form,
+        stipend: form.stipend ? Number(form.stipend) : 0,
+      };
+
+      await API.post(
+        "/placements/internship/create",
+        payload
       );
 
       alert("Internship added successfully!");
 
-      // reset form
+      // ✅ Reset form
       setForm({
         company: "",
         role: "",
@@ -56,8 +66,8 @@ export default function InternshipEntry() {
         open: true,
       });
     } catch (err) {
-      console.error(err);
-      alert("Error adding internship");
+      console.error("Submit error:", err);
+      setError("Failed to add internship");
     } finally {
       setLoading(false);
     }
@@ -128,6 +138,9 @@ export default function InternshipEntry() {
           Open for Applications
         </label>
 
+        {/* ERROR */}
+        {error && <p style={styles.error}>{error}</p>}
+
         {/* SUBMIT */}
         <button
           type="submit"
@@ -140,7 +153,6 @@ export default function InternshipEntry() {
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -177,5 +189,10 @@ const styles = {
     border: "none",
     borderRadius: "5px",
     cursor: "pointer",
+  },
+
+  error: {
+    color: "red",
+    fontSize: "14px",
   },
 };

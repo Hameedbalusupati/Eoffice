@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import StatusIcon from "../../../components/StatusIcon";
 
@@ -17,53 +17,66 @@ export default function PaperPresentation() {
 
   const [data, setData] = useState([]);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER PARSE
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user data");
+  }
 
   // =========================
   // 🔄 HANDLE INPUT
   // =========================
   const handleChange = (e) => {
-    setForm({
-      ...form,
+    setForm((prev) => ({
+      ...prev,
       [e.target.name]: e.target.value,
-    });
+    }));
   };
 
   // =========================
   // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (!user?.id) return;
 
-    let ignore = false;
+    try {
+      setLoading(true);
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/paper-presentations/${user.id}`
-        );
+      const res = await axios.get(
+        `http://127.0.0.1:8000/academics/paper-presentations/${user.id}`
+      );
 
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // =========================
-  // 🚀 ADD PRESENTATION
+  // 🚀 SUBMIT
   // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!user?.id) {
+      setMessage("❌ Please login first");
+      return;
+    }
+
+    if (!form.title || !form.student_name) {
+      setMessage("❌ Required fields missing");
+      return;
+    }
 
     try {
       const description = `
@@ -80,16 +93,17 @@ ${form.description}
       `;
 
       await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
+        faculty_id: user.id,
         activity_name: "paper_presentation",
         subject: form.title,
         class_name: form.class_name,
-        description: description,
+        description,
         status: "completed",
       });
 
       setMessage("🎤 Paper presentation added successfully!");
 
+      // 🔄 RESET FORM
       setForm({
         student_name: "",
         roll_no: "",
@@ -102,17 +116,19 @@ ${form.description}
         description: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/paper-presentations/${user.id}`
-      );
-      setData(res.data);
-
+      fetchData(); // refresh
     } catch (err) {
       console.error(err);
       setMessage("❌ Failed to add presentation");
     }
   };
+
+  // =========================
+  // 🚫 NOT LOGGED IN
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -168,7 +184,6 @@ ${form.description}
           placeholder="Conference / Event"
           value={form.conference}
           onChange={handleChange}
-          required
           style={styles.input}
         />
 
@@ -186,7 +201,7 @@ ${form.description}
         <input
           type="text"
           name="award"
-          placeholder="Award / Prize"
+          placeholder="Award"
           value={form.award}
           onChange={handleChange}
           style={styles.input}
@@ -197,7 +212,6 @@ ${form.description}
           name="date"
           value={form.date}
           onChange={handleChange}
-          required
           style={styles.input}
         />
 
@@ -215,47 +229,50 @@ ${form.description}
       </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Class</th>
-            <th>Description</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No presentations found
-              </td>
+              <th>Title</th>
+              <th>Class</th>
+              <th>Description</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => (
-              <tr key={item.id}>
-                <td>{item.subject}</td>
-                <td>{item.class_name}</td>
+          </thead>
 
-                <td style={styles.desc}>
-                  {item.description}
-                </td>
-
-                <td>
-                  <StatusIcon
-                    status={item.status === "completed"}
-                  />
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No presentations found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              data.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.subject || "-"}</td>
+                  <td>{item.class_name || "-"}</td>
+
+                  <td style={styles.desc}>
+                    {item.description || "-"}
+                  </td>
+
+                  <td>
+                    <StatusIcon
+                      status={item.status === "completed"}
+                    />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -306,6 +323,7 @@ const styles = {
   noData: {
     textAlign: "center",
     padding: "20px",
+    color: "#777",
   },
 
   message: {

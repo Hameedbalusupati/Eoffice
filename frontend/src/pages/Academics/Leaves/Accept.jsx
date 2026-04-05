@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import API from "../../../services/api"; // ✅ FIX
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function LeaveAccept() {
@@ -7,22 +7,20 @@ export default function LeaveAccept() {
   const [message, setMessage] = useState("");
 
   // =========================
-  // 📄 FETCH LEAVES (FIXED)
+  // 📄 FETCH LEAVES
   // =========================
   useEffect(() => {
     let ignore = false;
 
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/academics/leaves"
-        );
+        const res = await API.get("/academics/leaves");
 
         if (!ignore) {
-          setData(res.data);
+          setData(res.data || []);
         }
       } catch (err) {
-        console.error(err);
+        console.error("Fetch error:", err);
       }
     };
 
@@ -34,16 +32,14 @@ export default function LeaveAccept() {
   }, []);
 
   // =========================
-  // 🔄 REFRESH FUNCTION
+  // 🔄 REFRESH
   // =========================
   const refreshData = async () => {
     try {
-      const res = await axios.get(
-        "http://127.0.0.1:8000/academics/leaves"
-      );
-      setData(res.data);
+      const res = await API.get("/academics/leaves");
+      setData(res.data || []);
     } catch (err) {
-      console.error(err);
+      console.error("Refresh error:", err);
     }
   };
 
@@ -52,10 +48,7 @@ export default function LeaveAccept() {
   // =========================
   const handleAccept = async (id) => {
     try {
-      await axios.put(
-        `http://127.0.0.1:8000/academics/leaves/${id}/accept`
-      );
-
+      await API.put(`/academics/leaves/${id}/accept`);
       setMessage("✅ Leave accepted");
       refreshData();
     } catch (err) {
@@ -69,10 +62,7 @@ export default function LeaveAccept() {
   // =========================
   const handleReject = async (id) => {
     try {
-      await axios.put(
-        `http://127.0.0.1:8000/academics/leaves/${id}/reject`
-      );
-
+      await API.put(`/academics/leaves/${id}/reject`);
       setMessage("❌ Leave rejected");
       refreshData();
     } catch (err) {
@@ -109,10 +99,10 @@ export default function LeaveAccept() {
           ) : (
             data.map((item) => (
               <tr key={item.id}>
-                <td>{item.faculty_name}</td>
-                <td>{item.from_date}</td>
-                <td>{item.to_date}</td>
-                <td>{item.reason}</td>
+                <td>{item.faculty_name || "-"}</td>
+                <td>{item.from_date || "-"}</td>
+                <td>{item.to_date || "-"}</td>
+                <td>{item.reason || "-"}</td>
 
                 <td>
                   <StatusIcon status={item.status === "approved"} />
@@ -146,16 +136,14 @@ export default function LeaveAccept() {
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: { padding: "20px" },
 
   table: {
     width: "100%",
     borderCollapse: "collapse",
+    marginTop: "20px",
   },
 
   acceptBtn: {

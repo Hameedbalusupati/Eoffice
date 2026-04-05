@@ -1,50 +1,53 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function LibraryBooks() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // =========================
-  // 📄 FETCH BOOKS
+  // 📄 FETCH BOOKS (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/library/books"
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
+  const fetchBooks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get("/library/books");
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // =========================
-  // 🔍 SEARCH FILTER
+  // 🔁 USE EFFECT (FIXED)
+  // =========================
+  useEffect(() => {
+    fetchBooks();
+  }, [fetchBooks]);
+
+  // =========================
+  // 🔍 SEARCH FILTER (SAFE)
   // =========================
   const filteredData = useMemo(() => {
     if (!search) return data;
 
     return data.filter((item) =>
-      item.title.toLowerCase().includes(search.toLowerCase()) ||
-      item.author.toLowerCase().includes(search.toLowerCase())
+      (item.title || "")
+        .toLowerCase()
+        .includes(search.toLowerCase()) ||
+      (item.author || "")
+        .toLowerCase()
+        .includes(search.toLowerCase())
     );
   }, [data, search]);
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>📚 Library Books</h2>
@@ -59,45 +62,48 @@ export default function LibraryBooks() {
       />
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Author</th>
-            <th>Category</th>
-            <th>Availability</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredData.length === 0 ? (
+      {loading ? (
+        <p>Loading books...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No books found
-              </td>
+              <th>Title</th>
+              <th>Author</th>
+              <th>Category</th>
+              <th>Availability</th>
             </tr>
-          ) : (
-            filteredData.map((book) => (
-              <tr key={book.id}>
-                <td>{book.title}</td>
-                <td>{book.author}</td>
-                <td>{book.category}</td>
+          </thead>
 
-                <td>
-                  <StatusIcon status={book.available} />
-                  <span style={{ marginLeft: "6px" }}>
-                    {book.available ? "Available" : "Issued"}
-                  </span>
+          <tbody>
+            {filteredData.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={styles.noData}>
+                  No books found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              filteredData.map((book) => (
+                <tr key={book.id}>
+                  <td>{book.title || "—"}</td>
+                  <td>{book.author || "—"}</td>
+                  <td>{book.category || "—"}</td>
+
+                  <td>
+                    <StatusIcon status={book.available} />
+                    <span style={{ marginLeft: "6px" }}>
+                      {book.available ? "Available" : "Issued"}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES

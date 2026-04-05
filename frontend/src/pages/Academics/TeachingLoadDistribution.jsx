@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../services/api";
 import StatusIcon from "../../components/StatusIcon";
 
 export default function TeachingLoadDistribution() {
@@ -12,8 +12,43 @@ export default function TeachingLoadDistribution() {
 
   const [data, setData] = useState([]);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user data");
+  }
+
+  // =========================
+  // 📄 FETCH DATA
+  // =========================
+  const fetchData = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await API.get(
+        `/academics/teaching-load/${user.id}`
+      );
+
+      setData(res.data || []);
+    } catch (err) {
+      console.error(err);
+      setError("❌ Failed to load teaching load");
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // =========================
   // 🔄 HANDLE INPUT
@@ -26,41 +61,20 @@ export default function TeachingLoadDistribution() {
   };
 
   // =========================
-  // 📄 FETCH LOAD DATA
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/academics/teaching-load/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
-
-  // =========================
   // 🚀 ADD LOAD
   // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!user?.id) {
+      setMessage("❌ Please login");
+      return;
+    }
+
     try {
+      setLoading(true);
+      setMessage("");
+
       const description = `
 Faculty: ${form.faculty_name}
 Subject: ${form.subject}
@@ -68,12 +82,12 @@ Class: ${form.class_name}
 Weekly Hours: ${form.hours}
       `;
 
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
+      await API.post("/academics/create", {
+        faculty_id: user.id,
         activity_name: "teaching_load",
         subject: form.subject,
         class_name: form.class_name,
-        description: description,
+        description,
         status: "completed",
       });
 
@@ -86,23 +100,28 @@ Weekly Hours: ${form.hours}
         hours: "",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/academics/teaching-load/${user.id}`
-      );
-      setData(res.data);
-
+      fetchData(); // 🔄 refresh
     } catch (err) {
       console.error(err);
-      setMessage("❌ Failed to add load");
+      setMessage("❌ Failed to add teaching load");
+    } finally {
+      setLoading(false);
     }
   };
+
+  // =========================
+  // UI
+  // =========================
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
       <h2>📊 Teaching Load Distribution</h2>
 
-      {message && <p style={styles.message}>{message}</p>}
+      {message && <p style={styles.success}>{message}</p>}
+      {error && <p style={styles.error}>{error}</p>}
 
       {/* ================= FORM ================= */}
       <form onSubmit={handleSubmit} style={styles.form}>
@@ -146,37 +165,39 @@ Weekly Hours: ${form.hours}
           style={styles.input}
         />
 
-        <button type="submit" style={styles.button}>
-          Add Load
+        <button
+          type="submit"
+          style={styles.button}
+          disabled={loading}
+        >
+          {loading ? "Adding..." : "Add Load"}
         </button>
       </form>
 
       {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Subject</th>
-            <th>Class</th>
-            <th>Description</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {loading ? (
+        <p>Loading...</p>
+      ) : data.length === 0 ? (
+        <p>No load data found</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="4" style={styles.noData}>
-                No load data found
-              </td>
+              <th>Subject</th>
+              <th>Class</th>
+              <th>Description</th>
+              <th>Status</th>
             </tr>
-          ) : (
-            data.map((item) => (
+          </thead>
+
+          <tbody>
+            {data.map((item) => (
               <tr key={item.id}>
-                <td>{item.subject}</td>
-                <td>{item.class_name}</td>
+                <td>{item.subject || "-"}</td>
+                <td>{item.class_name || "-"}</td>
 
                 <td style={styles.desc}>
-                  {item.description}
+                  {item.description || "-"}
                 </td>
 
                 <td>
@@ -185,14 +206,13 @@ Weekly Hours: ${form.hours}
                   />
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -219,8 +239,8 @@ const styles = {
     backgroundColor: "#14b8a6",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {
@@ -238,8 +258,13 @@ const styles = {
     padding: "20px",
   },
 
-  message: {
+  success: {
+    color: "green",
     marginBottom: "10px",
-    fontWeight: "bold",
+  },
+
+  error: {
+    color: "red",
+    marginBottom: "10px",
   },
 };

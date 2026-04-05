@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../../services/api";
 import {
   BarChart,
   Bar,
@@ -13,72 +13,98 @@ import {
 export default function BarCharts() {
   const [categoryData, setCategoryData] = useState([]);
   const [statusData, setStatusData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // =========================
-  // 📄 FETCH DATA
+  // 📄 FETCH DATA (FIXED)
   // =========================
-  useEffect(() => {
-    let ignore = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          "http://127.0.0.1:8000/library/chart-data"
-        );
+    try {
+      const res = await API.get("/library/chart-data");
 
-        if (!ignore) {
-          setCategoryData(res.data.category);
-          setStatusData(res.data.status);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      const data = res.data || {};
 
-    fetchData();
+      // 🔥 safe handling
+      setCategoryData(
+        Array.isArray(data.category) ? data.category : []
+      );
 
-    return () => {
-      ignore = true;
-    };
+      setStatusData(
+        Array.isArray(data.status) ? data.status : []
+      );
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load chart data");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   return (
     <div style={styles.container}>
       <h2>📊 Library Dashboard</h2>
 
+      {/* STATUS */}
+      {loading && <p>⏳ Loading charts...</p>}
+      {error && <p style={styles.error}>{error}</p>}
+
       {/* ================= CATEGORY CHART ================= */}
-      <div style={styles.chartBox}>
-        <h3>📚 Books by Category</h3>
+      {!loading && !error && (
+        <>
+          <div style={styles.chartBox}>
+            <h3>📚 Books by Category</h3>
 
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={categoryData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="category" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="count" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+            {categoryData.length === 0 ? (
+              <p>No category data</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={categoryData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="category" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="count" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
 
-      {/* ================= STATUS CHART ================= */}
-      <div style={styles.chartBox}>
-        <h3>📊 Book Status</h3>
+          {/* ================= STATUS CHART ================= */}
+          <div style={styles.chartBox}>
+            <h3>📊 Book Status</h3>
 
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={statusData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="status" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="count" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+            {statusData.length === 0 ? (
+              <p>No status data</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={statusData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="status" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="count" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* 🔄 Refresh Button */}
+          <button onClick={fetchData} style={styles.button}>
+            Refresh Data
+          </button>
+        </>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -93,5 +119,18 @@ const styles = {
     backgroundColor: "#f9fafb",
     padding: "20px",
     borderRadius: "10px",
+  },
+
+  button: {
+    padding: "8px 12px",
+    background: "#007bff",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
+
+  error: {
+    color: "red",
   },
 };

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState, useCallback } from "react";
+import API from "../../../services/api";
 import StatusIcon from "../../../components/StatusIcon";
 
 export default function ExamAttendance() {
@@ -11,47 +11,50 @@ export default function ExamAttendance() {
 
   const [data, setData] = useState([]);
   const [message, setMessage] = useState("");
+  const [isError, setIsError] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ Safe user parsing
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  })();
+
+  // =========================
+  // 📄 FETCH DATA (FIXED)
+  // =========================
+  const fetchAttendance = useCallback(async () => {
+    if (!user?.id) return;
+
+    setLoading(true);
+    try {
+      const res = await API.get(
+        `/correspondence/sms/exam-attendance/${user.id}`
+      );
+      setData(res.data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]); // ✅ dependency added correctly
+
+  // =========================
+  // 🔁 USE EFFECT (FIXED)
+  // =========================
+  useEffect(() => {
+    fetchAttendance();
+  }, [fetchAttendance]); // ✅ no warning now
 
   // =========================
   // 🔄 HANDLE INPUT
   // =========================
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
-
-  // =========================
-  // 📄 FETCH DATA
-  // =========================
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let ignore = false;
-
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(
-          `http://127.0.0.1:8000/correspondence/sms/exam-attendance/${user.id}`
-        );
-
-        if (!ignore) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user?.id]);
 
   // =========================
   // 🚀 SEND SMS
@@ -59,24 +62,33 @@ export default function ExamAttendance() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    try {
-      const description = `
-Roll No: ${form.roll_no}
-Exam: ${form.exam_name}
-Status: ${form.status}
-      `;
+    if (!form.roll_no || !form.exam_name) {
+      setIsError(true);
+      setMessage("❌ All fields are required");
+      return;
+    }
 
-      await axios.post(
-        "http://127.0.0.1:8000/correspondence/sms/send-exam-attendance",
+    if (!user?.id) {
+      setIsError(true);
+      setMessage("❌ User not logged in");
+      return;
+    }
+
+    try {
+      const description = `Roll No: ${form.roll_no}, Exam: ${form.exam_name}, Status: ${form.status}`;
+
+      await API.post(
+        "/correspondence/sms/send-exam-attendance",
         {
-          faculty_id: user?.id,
+          faculty_id: user.id,
           roll_no: form.roll_no,
           exam_name: form.exam_name,
           status: form.status,
-          description: description,
+          description,
         }
       );
 
+      setIsError(false);
       setMessage("📩 SMS sent successfully!");
 
       setForm({
@@ -85,25 +97,40 @@ Status: ${form.status}
         status: "present",
       });
 
-      // 🔄 refresh
-      const res = await axios.get(
-        `http://127.0.0.1:8000/correspondence/sms/exam-attendance/${user.id}`
-      );
-      setData(res.data);
+      fetchAttendance(); // ✅ reuse safely
 
     } catch (err) {
-      console.error(err);
-      setMessage("❌ Failed to send SMS");
+      console.error("SMS error:", err);
+
+      const errorMsg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "❌ Failed to send SMS";
+
+      setIsError(true);
+      setMessage(errorMsg);
     }
   };
 
+  // =========================
+  // 🎨 UI
+  // =========================
   return (
     <div style={styles.container}>
       <h2>📩 Exam Attendance SMS</h2>
 
-      {message && <p style={styles.message}>{message}</p>}
+      {message && (
+        <p
+          style={{
+            ...styles.message,
+            color: isError ? "red" : "green",
+          }}
+        >
+          {message}
+        </p>
+      )}
 
-      {/* ================= FORM ================= */}
+      {/* FORM */}
       <form onSubmit={handleSubmit} style={styles.form}>
         <input
           type="text"
@@ -118,7 +145,7 @@ Status: ${form.status}
         <input
           type="text"
           name="exam_name"
-          placeholder="Exam Name (e.g. Mid-1)"
+          placeholder="Exam Name"
           value={form.exam_name}
           onChange={handleChange}
           required
@@ -140,48 +167,47 @@ Status: ${form.status}
         </button>
       </form>
 
-      {/* ================= TABLE ================= */}
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th>Roll No</th>
-            <th>Exam</th>
-            <th>Status</th>
-            <th>Description</th>
-            <th>Sent</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {data.length === 0 ? (
+      {/* TABLE */}
+      {loading ? (
+        <p>Loading records...</p>
+      ) : (
+        <table style={styles.table}>
+          <thead>
             <tr>
-              <td colSpan="5" style={styles.noData}>
-                No records found
-              </td>
+              <th>Roll No</th>
+              <th>Exam</th>
+              <th>Status</th>
+              <th>Description</th>
+              <th>Sent</th>
             </tr>
-          ) : (
-            data.map((item) => (
-              <tr key={item.id}>
-                <td>{item.roll_no}</td>
-                <td>{item.exam_name}</td>
-                <td>{item.status}</td>
+          </thead>
 
-                <td style={styles.desc}>
-                  {item.description}
-                </td>
-
-                <td>
-                  <StatusIcon status={true} />
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={styles.noData}>
+                  No records found
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              data.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.roll_no}</td>
+                  <td>{item.exam_name}</td>
+                  <td>{item.status}</td>
+                  <td style={styles.desc}>{item.description}</td>
+                  <td>
+                    <StatusIcon status={true} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 
 // =========================
 // 🎨 STYLES
@@ -208,8 +234,8 @@ const styles = {
     backgroundColor: "#dc2626",
     color: "#fff",
     border: "none",
-    cursor: "pointer",
     borderRadius: "5px",
+    cursor: "pointer",
   },
 
   table: {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import API from "../../../../services/api"; // ✅ FIX
 
 export default function ClassAttendance() {
   const [form, setForm] = useState({
@@ -11,11 +11,15 @@ export default function ClassAttendance() {
 
   const [message, setMessage] = useState("");
 
-  const user = JSON.parse(localStorage.getItem("user"));
+  // ✅ SAFE USER FETCH
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    console.error("Invalid user in localStorage");
+  }
 
-  // =========================
   // 🔄 HANDLE INPUT
-  // =========================
   const handleChange = (e) => {
     setForm({
       ...form,
@@ -23,15 +27,18 @@ export default function ClassAttendance() {
     });
   };
 
-  // =========================
   // 🚀 SUBMIT FORM
-  // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!user?.id) {
+      setMessage("❌ Please login first");
+      return;
+    }
+
     try {
-      await axios.post("http://127.0.0.1:8000/academics/create", {
-        faculty_id: user?.id,
+      await API.post("/academics/create", {
+        faculty_id: user.id,
         activity_name: "attendance_reports",
         subject: form.subject,
         class_name: form.class_name,
@@ -47,10 +54,15 @@ export default function ClassAttendance() {
         description: "",
       });
     } catch (error) {
-      console.error(error);
+      console.error("Submit error:", error);
       setMessage("❌ Failed to submit attendance report");
     }
   };
+
+  // 🚫 NOT LOGGED IN
+  if (!user) {
+    return <h2>Please login first</h2>;
+  }
 
   return (
     <div style={styles.container}>
@@ -107,10 +119,7 @@ export default function ClassAttendance() {
   );
 }
 
-
-// =========================
 // 🎨 STYLES
-// =========================
 const styles = {
   container: {
     padding: "20px",

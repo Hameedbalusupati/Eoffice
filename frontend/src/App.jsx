@@ -1,4 +1,7 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
+
+// COMPONENTS
+import Navbar from "./components/Navbar";
 
 // 🌐 PAGES
 import Dashboard from "./pages/Dashboard";
@@ -28,10 +31,13 @@ const ProtectedRoute = ({ children }) => {
 
 function App() {
   return (
-    <Router>
+    <>
+      {/* ✅ Navbar always visible */}
+      <Navbar />
+
       <Routes>
 
-        {/* HOME (LOGIN PAGE ALWAYS) */}
+        {/* HOME (LOGIN / DASHBOARD) */}
         <Route path="/" element={<Dashboard />} />
 
         {/* ACADEMICS */}
@@ -76,7 +82,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" />} />
 
       </Routes>
-    </Router>
+    </>
   );
 }
 

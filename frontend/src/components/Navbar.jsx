@@ -1,14 +1,20 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth";
 import "./Navbar.css";
 
 export default function Navbar() {
-  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
+  // ✅ Get user from localStorage safely
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("user"));
+  } catch {
+    user = null;
+  }
+
   const handleLogout = () => {
-    logout();
+    localStorage.removeItem("user");
     navigate("/login");
   };
 
@@ -18,12 +24,12 @@ export default function Navbar() {
 
   return (
     <nav className="navbar">
-      {/* Logo / Title */}
+      {/* Logo */}
       <div className="navbar-logo">
         <h2>E-Office</h2>
       </div>
 
-      {/* Navigation Links */}
+      {/* Links */}
       <ul className="navbar-links">
         <li>
           <Link to="/dashboard" className={isActive("/dashboard")}>
@@ -50,17 +56,26 @@ export default function Navbar() {
         </li>
       </ul>
 
-      {/* Right Section */}
+      {/* Right */}
       <div className="navbar-right">
-        {user && (
-          <span className="user-name">
-            👤 {user.name || "Faculty"}
-          </span>
-        )}
+        {user ? (
+          <>
+            <span className="user-name">
+              👤 {user?.name || "Faculty"}
+            </span>
 
-        <button className="logout-btn" onClick={handleLogout}>
-          Logout
-        </button>
+            <button className="logout-btn" onClick={handleLogout}>
+              Logout
+            </button>
+          </>
+        ) : (
+          <button
+            className="login-btn"
+            onClick={() => navigate("/login")}
+          >
+            Login
+          </button>
+        )}
       </div>
     </nav>
   );

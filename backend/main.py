@@ -2,10 +2,10 @@
 main.py
 
 👉 Entry point of FastAPI application
-👉 Connects:
-   - Database (PostgreSQL)
-   - All Routes
-   - Middleware (CORS)
+👉 Handles:
+   - Database
+   - Routes
+   - CORS (Frontend connection)
 """
 
 from fastapi import FastAPI
@@ -37,11 +37,14 @@ app = FastAPI(
 
 
 # =========================
-# 🌍 CORS CONFIG
+# 🌍 CORS CONFIG (FIXED 🔥)
 # =========================
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+
+    # 🔥 ADD YOUR VERCEL DOMAIN HERE
+    "https://your-frontend.vercel.app",
 ]
 
 app.add_middleware(
@@ -51,6 +54,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 🔥 TEMP FIX (for testing only)
+# Uncomment this if still not working
+# allow_origins=["*"]
 
 
 # =========================
@@ -103,7 +110,7 @@ def health_check():
 
 
 # =========================
-# ▶️ RUN (OPTIONAL)
+# ▶️ RUN (LOCAL ONLY)
 # =========================
 if __name__ == "__main__":
     import uvicorn

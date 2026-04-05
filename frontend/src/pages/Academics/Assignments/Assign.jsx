@@ -1,5 +1,5 @@
 import { useState } from "react";
-import API from "../../../../services/api"; // ✅ use central API
+import API from "../../../services/api"; // ✅ FIXED PATH
 
 export default function Assign() {
   const [form, setForm] = useState({
@@ -9,8 +9,11 @@ export default function Assign() {
   });
 
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // ✅ SAFE USER FETCH
+  // =========================
+  // 🔐 SAFE USER FETCH
+  // =========================
   let user = null;
   try {
     user = JSON.parse(localStorage.getItem("user") || "null");
@@ -18,15 +21,19 @@ export default function Assign() {
     console.error("Invalid user in localStorage");
   }
 
+  // =========================
   // 🔄 HANDLE INPUT
+  // =========================
   const handleChange = (e) => {
-    setForm({
-      ...form,
+    setForm((prev) => ({
+      ...prev,
       [e.target.name]: e.target.value,
-    });
+    }));
   };
 
+  // =========================
   // 🚀 SUBMIT FORM
+  // =========================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -34,6 +41,9 @@ export default function Assign() {
       setMessage("❌ Please login first");
       return;
     }
+
+    setLoading(true);
+    setMessage("");
 
     try {
       const response = await API.post("/academics/create", {
@@ -55,7 +65,15 @@ export default function Assign() {
       console.log(response.data);
     } catch (error) {
       console.error("Submit error:", error);
-      setMessage("❌ Failed to submit assignment");
+
+      const msg =
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        "❌ Failed to submit assignment";
+
+      setMessage(msg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -95,8 +113,8 @@ export default function Assign() {
           style={styles.textarea}
         />
 
-        <button type="submit" style={styles.button}>
-          Submit Assignment
+        <button type="submit" style={styles.button} disabled={loading}>
+          {loading ? "Submitting..." : "Submit Assignment"}
         </button>
       </form>
     </div>

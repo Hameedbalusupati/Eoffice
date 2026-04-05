@@ -1,4 +1,5 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useState } from "react";
 import "./Navbar.css";
 
 export default function Navbar() {
@@ -6,36 +7,38 @@ export default function Navbar() {
   const location = useLocation();
 
   // =========================
-  // 🔐 SAFE USER
+  // 🔐 LOAD USER (SAFE - NO useEffect)
   // =========================
-  let user = null;
-  try {
-    user = JSON.parse(localStorage.getItem("user"));
-  } catch {
-    user = null;
-  }
+  const [user, setUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  });
 
-  const isLoggedIn = user?.access_token || user?.token;
+  // ✅ LOGIN CHECK
+  const isLoggedIn = !!user;
 
   // =========================
   // 🚪 LOGOUT
   // =========================
   const handleLogout = () => {
     localStorage.removeItem("user");
-    navigate("/"); // ✅ FIXED
+    setUser(null); // ✅ allowed (event handler)
+    navigate("/");
   };
 
   // =========================
-  // 🎯 ACTIVE LINK (IMPROVED)
+  // 🎯 ACTIVE LINK
   // =========================
-  const isActive = (path) => {
-    return location.pathname.startsWith(path) ? "active-link" : "";
-  };
+  const isActive = (path) =>
+    location.pathname.startsWith(path) ? "active-link" : "";
 
   return (
     <nav className="navbar">
       {/* LOGO */}
-      <div className="navbar-logo">
+      <div className="navbar-logo" onClick={() => navigate("/")}>
         <h2>E-Office</h2>
       </div>
 
@@ -78,10 +81,7 @@ export default function Navbar() {
             </button>
           </>
         ) : (
-          <button
-            className="login-btn"
-            onClick={() => navigate("/")}
-          >
+          <button className="login-btn" onClick={() => navigate("/")}>
             Login
           </button>
         )}

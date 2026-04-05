@@ -32,8 +32,8 @@ const getUser = () => {
 const ProtectedRoute = ({ children }) => {
   const user = getUser();
 
-  // check token properly
-  if (!user?.access_token && !user?.token) {
+  // ✅ SIMPLE CHECK (DON’T OVERCHECK TOKEN)
+  if (!user) {
     return <Navigate to="/" replace />;
   }
 
@@ -47,24 +47,33 @@ function App() {
   const location = useLocation();
   const user = getUser();
 
-  // hide navbar on login page
+  // ✅ hide navbar only on login page
   const hideNavbar = location.pathname === "/" && !user;
 
   return (
     <>
-      {/* ✅ Navbar (conditional) */}
       {!hideNavbar && <Navbar />}
 
       <Routes>
-        {/* HOME (LOGIN) */}
+        {/* ================= LOGIN / HOME ================= */}
         <Route
           path="/"
           element={
             user ? (
-              <Navigate to="/academics/manage" />
+              <Navigate to="/academics/manage" replace />
             ) : (
               <Dashboard />
             )
+          }
+        />
+
+        {/* ================= DASHBOARD (SAFE ROUTE) ================= */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
           }
         />
 
@@ -107,7 +116,7 @@ function App() {
         />
 
         {/* ================= DEFAULT ================= */}
-        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   );

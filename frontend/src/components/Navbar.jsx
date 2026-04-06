@@ -7,17 +7,23 @@ export default function Navbar() {
   const location = useLocation();
 
   // =========================
-  // 🔐 LOAD USER (SAFE - NO useEffect)
+  // 🔐 SAFE USER STATE (NO useEffect)
   // =========================
   const [user, setUser] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("user"));
-    } catch {
+      const storedUser = localStorage.getItem("user");
+
+      if (!storedUser || storedUser === "undefined") {
+        return null;
+      }
+
+      return JSON.parse(storedUser);
+    } catch (error) {
+      console.error("User parse error:", error);
       return null;
     }
   });
 
-  // ✅ LOGIN CHECK
   const isLoggedIn = !!user;
 
   // =========================
@@ -25,7 +31,7 @@ export default function Navbar() {
   // =========================
   const handleLogout = () => {
     localStorage.removeItem("user");
-    setUser(null); // ✅ allowed (event handler)
+    setUser(null);
     navigate("/");
   };
 

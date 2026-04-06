@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import API from "../services/api";
+// import API from "../services/api"; ❌ TEMP DISABLE
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -24,7 +24,7 @@ export default function Dashboard() {
   };
 
   // =========================
-  // LOGIN FUNCTION (COMMON)
+  // LOGIN FUNCTION (SAFE)
   // =========================
   const login = async (credentials, role) => {
     if (!credentials.email || !credentials.password) {
@@ -36,29 +36,25 @@ export default function Dashboard() {
     setError("");
 
     try {
-      const res = await API.post("/auth/login", credentials);
+      // 🔥 TEMP MOCK LOGIN (REMOVE API ERROR)
+      const fakeUser = {
+        email: credentials.email,
+        role: role,
+        name: "Demo User",
+      };
 
-      // 🔐 store full response (IMPORTANT)
-      const userData = res.data;
+      localStorage.setItem("user", JSON.stringify(fakeUser));
 
-      localStorage.setItem("user", JSON.stringify(userData));
-
-      // 🚀 NAVIGATION
+      // NAVIGATION
       if (role === "faculty") {
         navigate("/academics/manage");
       } else {
-        navigate("/");
+        navigate("/dashboard");
       }
     } catch (err) {
       console.error("Login error:", err);
-
-      const msg =
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        "Login failed";
-
-      setError(msg);
-      alert(msg);
+      setError("Login failed");
+      alert("Login failed");
     } finally {
       setLoading(false);
     }

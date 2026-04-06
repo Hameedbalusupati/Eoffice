@@ -6,8 +6,11 @@ import axios from "axios";
 // 🌐 BASE URL (SAFE)
 // =========================
 const BASE_URL =
-  import.meta.env.VITE_API_BASE_URL?.trim() ||
+  (import.meta.env.VITE_API_BASE_URL || "").trim() ||
   "https://eoffice-97mv.onrender.com";
+
+// Debug (optional)
+console.log("API BASE URL:", BASE_URL);
 
 // =========================
 // 🚀 AXIOS INSTANCE
@@ -17,7 +20,7 @@ const API = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 15000, // 🔥 important (Render cold start)
+  timeout: 20000, // increased for Render cold start
 });
 
 // =========================
@@ -26,11 +29,11 @@ const API = axios.create({
 const getToken = () => {
   try {
     const rawUser = localStorage.getItem("user");
-    if (!rawUser) return null;
+
+    if (!rawUser || rawUser === "undefined") return null;
 
     const user = JSON.parse(rawUser);
 
-    // ✅ support both formats
     return user?.access_token || user?.token || null;
   } catch (err) {
     console.error("Token parse error:", err);
@@ -65,23 +68,28 @@ API.interceptors.response.use(
     const message =
       error.response?.data?.detail ||
       error.response?.data?.message ||
-      error.message;
+      error.message ||
+      "Something went wrong";
 
     console.error("API Error:", message);
 
-    // 🔥 Handle unauthorized
+    // =========================
+    // 🔐 HANDLE 401
+    // =========================
     if (status === 401) {
       localStorage.removeItem("user");
 
-      // avoid reload loop
+      // safer redirect
       if (window.location.pathname !== "/") {
-        window.location.href = "/";
+        window.location.replace("/");
       }
     }
 
-    // 🔥 Handle network error (very common on Render cold start)
+    // =========================
+    // 🌐 NETWORK ERROR (Render Sleep)
+    // =========================
     if (!error.response) {
-      console.error("Network error / backend may be sleeping");
+      console.error("⚠️ Backend may be sleeping (Render cold start)");
     }
 
     return Promise.reject(error);
